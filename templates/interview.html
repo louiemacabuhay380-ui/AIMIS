@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>{{ iv.category }} Interview ({{ iv.difficulty }})</h2>
+<p>Question {{ current.question_order }} of {{ iv.number_of_questions }}</p>
+<h3>{{ current.question_text }}</h3>
+<form method="POST">
+  <input type="hidden" name="interview_question_id" value="{{ current.interview_question_id }}">
+  <textarea name="answer" rows="8" cols="70" placeholder="Type your answer here..." required></textarea><br>
+  <button type="submit">Submit answer</button>
+</form>
+{% endblock %}

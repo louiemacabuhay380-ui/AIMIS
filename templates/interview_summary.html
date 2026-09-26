@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Interview summary</h2>
+<p>{{ iv.category }}, {{ iv.difficulty }}, status: {{ iv.status }}</p>
+{% for a in answers %}
+  <h4>Q{{ a.question_order }}. {{ a.question_text }}</h4>
+  <p>{{ a.transcript or "(no answer)" }}</p>
+{% endfor %}
+<p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
+{% endblock %}
