@@ -1,0 +1,10 @@
+<!DOCTYPE html>
+<html>
+<head><title>AIMIS</title></head>
+<body>
+  {% with messages = get_flashed_messages() %}
+    {% for m in messages %}<p style="color:#c00">{{ m }}</p>{% endfor %}
+  {% endwith %}
+  {% block content %}{% endblock %}
+</body>
+</html>
