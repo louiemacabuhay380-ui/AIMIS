@@ -2,9 +2,31 @@
 {% block content %}
 <h2>Interview summary</h2>
 <p>{{ iv.category }}, {{ iv.difficulty }}, status: {{ iv.status }}</p>
+
+{% if evaluation %}
+  <h3>Overall score: {{ evaluation.overall_score }} / 100</h3>
+{% elif iv.status == 'completed' %}
+  <p>This interview hasn't been evaluated yet.</p>
+  <form method="POST" action="{{ url_for('retry_evaluation', interview_id=iv.interview_id) }}">
+    <button type="submit">Run AI evaluation</button>
+  </form>
+{% endif %}
+
 {% for a in answers %}
   <h4>Q{{ a.question_order }}. {{ a.question_text }}</h4>
   <p>{{ a.transcript or "(no answer)" }}</p>
+  {% if a.relevance_score is not none %}
+    <p><small>Relevance: {{ a.relevance_score }} | Clarity: {{ a.clarity_score }} |
+      Completeness: {{ a.completeness_score }} | Grammar: {{ a.grammar_score }}</small></p>
+  {% endif %}
 {% endfor %}
+
+{% if fb %}
+  <h3>Feedback</h3>
+  <h4>Strengths</h4><p>{{ fb.strengths }}</p>
+  <h4>Areas to improve</h4><p>{{ fb.areas_to_improve }}</p>
+  <h4>Recommendations</h4><p>{{ fb.recommendations }}</p>
+{% endif %}
+
 <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
 {% endblock %}

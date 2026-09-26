@@ -4,6 +4,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 import mysql.connector
+from ai_service import analyze_interview
 
 load_dotenv()
 app = Flask(__name__)
@@ -22,6 +23,48 @@ def login_required(f):
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return wrapper
+
+def evaluate_interview(interview_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT category, difficulty FROM interviews WHERE interview_id = %s", (interview_id,))
+    iv = cursor.fetchone()
+    cursor.execute("""SELECT r.response_id, qb.question_text, r.transcript
+                      FROM interview_questions iq
+                      JOIN question_bank qb ON qb.question_id = iq.question_id
+                      JOIN responses r ON r.interview_question_id = iq.interview_question_id
+                      WHERE iq.interview_id = %s ORDER BY iq.question_order""", (interview_id,))
+    qa_list = cursor.fetchall()
+
+    result = analyze_interview(iv["category"], iv["difficulty"], qa_list)
+
+    # Clear any old results so re-evaluating doesn't create duplicates
+    response_ids = [qa["response_id"] for qa in qa_list]
+    placeholders = ", ".join(["%s"] * len(response_ids))
+    cursor.execute(f"DELETE FROM nlp_analysis WHERE response_id IN ({placeholders})", response_ids)
+    cursor.execute("DELETE FROM evaluations WHERE interview_id = %s", (interview_id,))
+    cursor.execute("DELETE FROM feedback WHERE interview_id = %s", (interview_id,))
+
+    all_scores = []
+    for qa, scores in zip(qa_list, result["answers"]):
+        s = [min(max(float(scores[k]), 0), 100)
+             for k in ("relevance", "clarity", "completeness", "grammar")]
+        all_scores.extend(s)
+        cursor.execute("""INSERT INTO nlp_analysis
+                          (response_id, relevance_score, clarity_score, completeness_score, grammar_score)
+                          VALUES (%s, %s, %s, %s, %s)""", (qa["response_id"], *s))
+
+    quality = round(sum(all_scores) / len(all_scores), 2)
+    # Only typed answers for now, so overall = response quality.
+    # Later: combine with speech and behavioral scores.
+    cursor.execute("""INSERT INTO evaluations (interview_id, response_quality_score, overall_score)
+                      VALUES (%s, %s, %s)""", (interview_id, quality, quality))
+    cursor.execute("""INSERT INTO feedback (interview_id, strengths, areas_to_improve, recommendations)
+                      VALUES (%s, %s, %s, %s)""",
+                   (interview_id, result["strengths"], result["areas_to_improve"], result["recommendations"]))
+    cursor.execute("UPDATE interviews SET overall_score = %s WHERE interview_id = %s", (quality, interview_id))
+    conn.commit()
+    conn.close()
 
 @app.route("/")
 def index():
@@ -170,6 +213,11 @@ def interview(interview_id):
                           WHERE interview_id = %s""", (interview_id,))
         conn.commit()
         conn.close()
+        try:
+            evaluate_interview(interview_id)
+        except Exception as e:
+            print("Evaluation failed:", e)
+            flash("Your answers were saved, but the AI evaluation failed. You can retry below.")
         return redirect(url_for("interview_summary", interview_id=interview_id))
 
     if request.method == "POST":
@@ -200,15 +248,44 @@ def interview_summary(interview_id):
         flash("Interview not found.")
         return redirect(url_for("dashboard"))
 
-    cursor.execute("""SELECT iq.question_order, qb.question_text, r.transcript
+    cursor.execute("""SELECT iq.question_order, qb.question_text, r.transcript,
+                             n.relevance_score, n.clarity_score, n.completeness_score, n.grammar_score
                       FROM interview_questions iq
                       JOIN question_bank qb ON qb.question_id = iq.question_id
                       LEFT JOIN responses r ON r.interview_question_id = iq.interview_question_id
+                      LEFT JOIN nlp_analysis n ON n.response_id = r.response_id
                       WHERE iq.interview_id = %s
                       ORDER BY iq.question_order""", (interview_id,))
     answers = cursor.fetchall()
+    cursor.execute("SELECT * FROM evaluations WHERE interview_id = %s", (interview_id,))
+    evaluation = cursor.fetchone()
+    cursor.execute("SELECT * FROM feedback WHERE interview_id = %s ORDER BY created_at DESC LIMIT 1",
+                   (interview_id,))
+    fb = cursor.fetchone()
     conn.close()
-    return render_template("interview_summary.html", iv=iv, answers=answers)
+    return render_template("interview_summary.html", iv=iv, answers=answers,
+                           evaluation=evaluation, fb=fb)
+
+@app.route("/interview/<int:interview_id>/evaluate", methods=["POST"])
+@login_required
+def retry_evaluation(interview_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""SELECT interview_id FROM interviews
+                      WHERE interview_id = %s AND user_id = %s AND status = 'completed'""",
+                   (interview_id, session["user_id"]))
+    found = cursor.fetchone()
+    conn.close()
+    if not found:
+        flash("Interview not found.")
+        return redirect(url_for("dashboard"))
+    try:
+        evaluate_interview(interview_id)
+        flash("Evaluation complete!")
+    except Exception as e:
+        print("Evaluation failed:", e)
+        flash("The AI evaluation failed again. Check the terminal for the error.")
+    return redirect(url_for("interview_summary", interview_id=interview_id))
 
 if __name__ == "__main__":
     app.run(debug=True)
