@@ -1,0 +1,121 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Check your devices</h2>
+<p>Before your {{ iv.category }} interview ({{ iv.difficulty }}) starts, let's make sure your devices work.</p>
+
+<h3>Microphone</h3>
+<button id="micBtn">Test microphone</button>
+<p id="micStatus">Click the button, allow microphone access, then say a few words.</p>
+<div style="width:300px; height:16px; border:1px solid #888;">
+  <div id="micLevel" style="height:100%; width:0; background:#2a9d4a;"></div>
+</div>
+
+<div id="cameraSection" hidden>
+  <h3>Camera</h3>
+  <button id="camBtn">Test camera</button>
+  <p id="camStatus">Click the button and allow camera access.</p>
+  <video id="camPreview" width="320" autoplay muted playsinline hidden></video>
+</div>
+
+<form method="POST" style="margin-top:16px;">
+  <button id="continueBtn" type="submit" disabled>Continue to interview</button>
+</form>
+<p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
+
+<script>
+// Set to true once video-based behavioral analysis is added
+const REQUIRE_CAMERA = false;
+
+const micBtn = document.getElementById("micBtn");
+const micStatus = document.getElementById("micStatus");
+const micLevel = document.getElementById("micLevel");
+const camBtn = document.getElementById("camBtn");
+const camStatus = document.getElementById("camStatus");
+const camPreview = document.getElementById("camPreview");
+const continueBtn = document.getElementById("continueBtn");
+let micOk = false;
+let camOk = !REQUIRE_CAMERA;
+
+if (REQUIRE_CAMERA) document.getElementById("cameraSection").hidden = false;
+
+if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+  micStatus.textContent = "Your browser doesn't support microphone access. Please use Google Chrome or Microsoft Edge.";
+  micBtn.disabled = true;
+}
+
+function explain(err, device) {
+  if (err.name === "NotAllowedError")
+    return `Access to your ${device} was blocked. Click the icon next to the address bar, allow the ${device}, then click Try again.`;
+  if (err.name === "NotFoundError")
+    return `No ${device} was found. Connect one, then click Try again.`;
+  if (err.name === "NotReadableError")
+    return `Your ${device} is being used by another app. Close apps like Zoom, Messenger, or Discord, then click Try again.`;
+  return `Your ${device} could not be started (${err.name}). Click Try again.`;
+}
+
+function updateContinue() {
+  continueBtn.disabled = !(micOk && camOk);
+}
+
+micBtn.onclick = async () => {
+  micBtn.disabled = true;
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    micStatus.textContent = explain(err, "microphone");
+    micBtn.disabled = false;
+    micBtn.textContent = "Try again";
+    return;
+  }
+
+  micStatus.textContent = "Microphone connected. Say a few words...";
+  const ctx = new AudioContext();
+  const analyser = ctx.createAnalyser();
+  analyser.fftSize = 512;
+  ctx.createMediaStreamSource(stream).connect(analyser);
+  const data = new Uint8Array(analyser.fftSize);
+  const started = Date.now();
+  let loudFrames = 0;
+
+  (function tick() {
+    analyser.getByteTimeDomainData(data);
+    let peak = 0;
+    for (const v of data) peak = Math.max(peak, Math.abs(v - 128));
+    const level = Math.min(100, (peak / 128) * 200);
+    micLevel.style.width = level + "%";
+
+    if (level > 15) loudFrames++;
+    if (!micOk && loudFrames > 20) {
+      micOk = true;
+      micStatus.textContent = "✔ Your microphone is working.";
+      updateContinue();
+    }
+    if (!micOk && Date.now() - started > 10000) {
+      micStatus.textContent = "We couldn't hear anything. Check that your microphone isn't muted and is the one selected in your browser, then click Try again.";
+      stream.getTracks().forEach(t => t.stop());
+      ctx.close();
+      micLevel.style.width = "0";
+      micBtn.disabled = false;
+      micBtn.textContent = "Try again";
+      return;
+    }
+    requestAnimationFrame(tick);
+  })();
+};
+
+camBtn.onclick = async () => {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+    camPreview.srcObject = stream;
+    camPreview.hidden = false;
+    camOk = true;
+    camStatus.textContent = "✔ Your camera is working. Make sure your face is visible and well lit.";
+    updateContinue();
+  } catch (err) {
+    camStatus.textContent = explain(err, "camera");
+    camBtn.textContent = "Try again";
+  }
+};
+</script>
+{% endblock %}

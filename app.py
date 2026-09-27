@@ -232,6 +232,9 @@ def interview(interview_id):
     if iv["status"] != "in_progress":
         conn.close()
         return redirect(url_for("interview_summary", interview_id=interview_id))
+    if interview_id not in session.get("device_checked", []):
+        conn.close()
+        return redirect(url_for("device_check", interview_id=interview_id))
 
     # The next question in this interview that has no answer yet
     cursor.execute("""SELECT iq.interview_question_id, iq.question_order, qb.question_text
@@ -382,6 +385,30 @@ def audio_file(filename):
     if not found:
         abort(404)
     return send_from_directory(AUDIO_DIR, filename)
+
+@app.route("/interview/<int:interview_id>/check", methods=["GET", "POST"])
+@login_required
+def device_check(interview_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM interviews WHERE interview_id = %s AND user_id = %s",
+                   (interview_id, session["user_id"]))
+    iv = cursor.fetchone()
+    conn.close()
+    if not iv:
+        flash("Interview not found.")
+        return redirect(url_for("dashboard"))
+    if iv["status"] != "in_progress":
+        return redirect(url_for("interview_summary", interview_id=interview_id))
+
+    if request.method == "POST":
+        checked = session.get("device_checked", [])
+        if interview_id not in checked:
+            checked.append(interview_id)
+        session["device_checked"] = checked
+        return redirect(url_for("interview", interview_id=interview_id))
+
+    return render_template("device_check.html", iv=iv)
 
 if __name__ == "__main__":
     app.run(debug=True)
