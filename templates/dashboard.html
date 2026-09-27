@@ -4,6 +4,38 @@
 <p><a href="{{ url_for('start_interview') }}">Start a new interview</a> |
    <a href="{{ url_for('logout') }}">Log out</a></p>
 
+
+<h3>Your progress</h3>
+{% if stats %}
+  <p>Completed interviews: {{ stats.count }} | Average: {{ stats.average }} |
+     Best: {{ stats.best }} | Latest: {{ stats.latest }}
+     {% if stats.change is not none %} | Change since first: {{ '%+.2f'|format(stats.change) }}{% endif %}</p>
+  <div style="max-width:700px;"><canvas id="progressChart" data-chart='{{ chart|tojson }}'></canvas></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const chart = JSON.parse(document.getElementById("progressChart").dataset.chart);
+    new Chart(document.getElementById("progressChart"), {
+      type: "line",
+      data: {
+        labels: chart.labels,
+        datasets: [
+          { label: "Overall", data: chart.overall, borderWidth: 3 },
+          { label: "Answer quality", data: chart.quality },
+          { label: "Speech delivery", data: chart.speech, spanGaps: true }
+        ]
+      },
+      options: {
+        scales: { y: { min: 0, max: 100, title: { display: true, text: "Score" } } },
+        plugins: {
+          tooltip: { callbacks: { afterLabel: ctx => "Category: " + chart.categories[ctx.dataIndex] } }
+        }
+      }
+    });
+  </script>
+{% else %}
+  <p>Complete an interview to see your progress here.</p>
+{% endif %}
 <h3>Your interviews</h3>
 {% if interviews %}
 <table border="1" cellpadding="6">

@@ -8,6 +8,9 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 import mysql.connector
 from ai_service import analyze_interview, transcribe_answer
+import io
+from flask import Response
+from cryptography.fernet import Fernet, InvalidToken
 
 load_dotenv()
 app = Flask(__name__)
@@ -16,6 +19,10 @@ app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024   # max 25 MB upload
 AUDIO_DIR = os.path.join(app.root_path, "uploads", "audio")
 os.makedirs(AUDIO_DIR, exist_ok=True)
 CONSENT_VERSION = "v1.0"
+_audio_key = os.getenv("AUDIO_ENCRYPTION_KEY")
+if not _audio_key:
+    raise RuntimeError("AUDIO_ENCRYPTION_KEY is missing from .env")
+fernet = Fernet(_audio_key.encode())
 
 def get_db():
     return mysql.connector.connect(
@@ -162,8 +169,40 @@ def dashboard():
     cursor.execute("""SELECT * FROM interviews WHERE user_id = %s
                       ORDER BY started_at DESC""", (session["user_id"],))
     interviews = cursor.fetchall()
+
+    cursor.execute("""SELECT i.category, i.completed_at, e.overall_score,
+                             e.response_quality_score, e.speech_performance_score
+                      FROM interviews i
+                      JOIN evaluations e ON e.interview_id = i.interview_id
+                      WHERE i.user_id = %s AND i.status = 'completed'
+                      ORDER BY i.completed_at""", (session["user_id"],))
+    history = cursor.fetchall()
     conn.close()
-    return render_template("dashboard.html", interviews=interviews)
+
+    def num(value):
+        return float(value) if value is not None else None
+
+    chart = {
+        "labels": [f"#{n} ({h['completed_at'].strftime('%b %d')})" if h["completed_at"] else f"#{n}"
+                   for n, h in enumerate(history, start=1)],
+        "overall": [num(h["overall_score"]) for h in history],
+        "quality": [num(h["response_quality_score"]) for h in history],
+        "speech": [num(h["speech_performance_score"]) for h in history],
+        "categories": [h["category"] for h in history],
+    }
+
+    stats = None
+    scores = [s for s in chart["overall"] if s is not None]
+    if scores:
+        stats = {
+            "count": len(scores),
+            "average": round(sum(scores) / len(scores), 2),
+            "best": max(scores),
+            "latest": scores[-1],
+            "change": round(scores[-1] - scores[0], 2) if len(scores) > 1 else None,
+        }
+
+    return render_template("dashboard.html", interviews=interviews, chart=chart, stats=stats)
 
 @app.route("/interview/start", methods=["GET", "POST"])
 @login_required
@@ -267,12 +306,10 @@ def interview(interview_id):
             conn.close()
             return jsonify(ok=False, error="No recording received."), 400
 
-        filename = f"interview{interview_id}_q{submitted_id}.wav"
-        filepath = os.path.join(AUDIO_DIR, filename)
-        audio.save(filepath)
+        audio_bytes = audio.read()   # keep the recording in memory; never save it unencrypted
 
         try:
-            with wave.open(filepath, "rb") as w:
+            with wave.open(io.BytesIO(audio_bytes), "rb") as w:
                 duration = round(w.getnframes() / w.getframerate(), 2)
         except wave.Error:
             conn.close()
@@ -280,9 +317,6 @@ def interview(interview_id):
         if duration < 2:
             conn.close()
             return jsonify(ok=False, error="That recording is too short. Please answer again."), 400
-
-        with open(filepath, "rb") as f:
-            audio_bytes = f.read()
         try:
             result = transcribe_answer(current["question_text"], audio_bytes)
         except Exception as e:
@@ -295,6 +329,9 @@ def interview(interview_id):
             conn.close()
             return jsonify(ok=False, error="We couldn't hear an answer. Check your microphone and try again."), 400
 
+        filename = f"interview{interview_id}_q{submitted_id}.wav.enc"
+        with open(os.path.join(AUDIO_DIR, filename), "wb") as f:
+            f.write(fernet.encrypt(audio_bytes))
         speaking_rate = round(len(transcript.split()) / (duration / 60), 2)   # words per minute
 
         cursor.execute("""INSERT INTO responses (interview_question_id, transcript, audio_path, duration)
@@ -373,6 +410,7 @@ def retry_evaluation(interview_id):
 @app.route("/audio/<path:filename>")
 @login_required
 def audio_file(filename):
+    filename = os.path.basename(filename)   # blocks paths like ../../.env
     conn = get_db()
     cursor = conn.cursor()
     cursor.execute("""SELECT r.response_id FROM responses r
@@ -382,9 +420,17 @@ def audio_file(filename):
                    (f"uploads/audio/{filename}", session["user_id"]))
     found = cursor.fetchone()
     conn.close()
-    if not found:
+    path = os.path.join(AUDIO_DIR, filename)
+    if not found or not os.path.exists(path):
         abort(404)
-    return send_from_directory(AUDIO_DIR, filename)
+
+    with open(path, "rb") as f:
+        encrypted = f.read()
+    try:
+        audio_bytes = fernet.decrypt(encrypted)
+    except InvalidToken:
+        abort(500)   # wrong key or damaged file
+    return Response(audio_bytes, mimetype="audio/wav")
 
 @app.route("/interview/<int:interview_id>/check", methods=["GET", "POST"])
 @login_required
