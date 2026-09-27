@@ -18,6 +18,10 @@
   <h4>Q{{ a.question_order }}. {{ a.question_text }}</h4>
   <p>{{ a.transcript or "(no answer)" }}</p>  {% if a.audio_path %}
     <audio controls src="{{ url_for('audio_file', filename=a.audio_path.split('/')[-1]) }}"></audio>
+      {% if a.word_count is not none %}
+    <p><small>Words: {{ a.word_count }} | Vocabulary diversity: {{ a.vocabulary_diversity }}% |
+      Keywords ({{ a.keyword_count }}): {{ a.keywords_found or "none" }}</small></p>
+  {% endif %}
   {% endif %}
   {% if a.fluency_score is not none %}
     <p><small>Speaking rate: {{ a.speaking_rate }} words/min | Filler words: {{ a.filler_word_count }} |

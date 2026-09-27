@@ -1,6 +1,7 @@
 import os
 import wave
 from functools import wraps
+from nlp_service import analyze_text
 from flask import (Flask, render_template, request, redirect, url_for, session,
                    flash, jsonify, send_from_directory, abort)
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -52,13 +53,18 @@ def evaluate_interview(interview_id):
     cursor.execute("DELETE FROM feedback WHERE interview_id = %s", (interview_id,))
 
     all_scores = []
+    all_scores = []
     for qa, scores in zip(qa_list, result["answers"]):
         s = [min(max(float(scores[k]), 0), 100)
              for k in ("relevance", "clarity", "completeness", "grammar")]
         all_scores.extend(s)
+        stats = analyze_text(qa["transcript"], iv["category"])
         cursor.execute("""INSERT INTO nlp_analysis
-                          (response_id, relevance_score, clarity_score, completeness_score, grammar_score)
-                          VALUES (%s, %s, %s, %s, %s)""", (qa["response_id"], *s))
+                          (response_id, relevance_score, clarity_score, completeness_score, grammar_score,
+                           word_count, sentence_count, vocabulary_diversity, keyword_count, keywords_found)
+                          VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                       (qa["response_id"], *s, stats["word_count"], stats["sentence_count"],
+                        stats["vocabulary_diversity"], stats["keyword_count"], stats["keywords_found"]))
 
         quality = round(sum(all_scores) / len(all_scores), 2)
 
@@ -200,6 +206,9 @@ def start_interview():
                               VALUES (%s, %s, %s)""", (interview_id, q["question_id"], order))
         conn.commit()
         conn.close()
+        if len(questions) < count:
+            flash(f"Only {len(questions)} question(s) are available for {category} ({difficulty}), "
+                  f"so this interview has {len(questions)} instead of {count}.")
         return redirect(url_for("interview", interview_id=interview_id))
 
     cursor.execute("SELECT DISTINCT category FROM question_bank WHERE is_active = 1 ORDER BY category")
@@ -317,8 +326,9 @@ def interview_summary(interview_id):
         return redirect(url_for("dashboard"))
 
     cursor.execute("""SELECT iq.question_order, qb.question_text, r.transcript, r.audio_path,
-                             n.relevance_score, n.clarity_score, n.completeness_score, n.grammar_score,
-                             s.speaking_rate, s.filler_word_count, s.pause_count, s.fluency_score
+                      n.relevance_score, n.clarity_score, n.completeness_score, n.grammar_score,
+                      n.word_count, n.vocabulary_diversity, n.keyword_count, n.keywords_found,
+                      s.speaking_rate, s.filler_word_count, s.pause_count, s.fluency_score
                       FROM interview_questions iq
                       JOIN question_bank qb ON qb.question_id = iq.question_id
                       LEFT JOIN responses r ON r.interview_question_id = iq.interview_question_id
