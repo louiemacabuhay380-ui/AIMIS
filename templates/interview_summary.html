@@ -5,8 +5,10 @@
 
 {% if evaluation %}
   <h3>Overall score: {{ evaluation.overall_score }} / 100</h3>
-{% elif iv.status == 'completed' %}
-  <p>This interview hasn't been evaluated yet.</p>
+  <p>Answer quality: {{ evaluation.response_quality_score }}
+    {% if evaluation.speech_performance_score is not none %}
+      | Speech delivery: {{ evaluation.speech_performance_score }}
+    {% endif %}</p>
   <form method="POST" action="{{ url_for('retry_evaluation', interview_id=iv.interview_id) }}">
     <button type="submit">Run AI evaluation</button>
   </form>
@@ -14,7 +16,13 @@
 
 {% for a in answers %}
   <h4>Q{{ a.question_order }}. {{ a.question_text }}</h4>
-  <p>{{ a.transcript or "(no answer)" }}</p>
+  <p>{{ a.transcript or "(no answer)" }}</p>  {% if a.audio_path %}
+    <audio controls src="{{ url_for('audio_file', filename=a.audio_path.split('/')[-1]) }}"></audio>
+  {% endif %}
+  {% if a.fluency_score is not none %}
+    <p><small>Speaking rate: {{ a.speaking_rate }} words/min | Filler words: {{ a.filler_word_count }} |
+      Pauses: {{ a.pause_count }} | Fluency: {{ a.fluency_score }}</small></p>
+  {% endif %}
   {% if a.relevance_score is not none %}
     <p><small>Relevance: {{ a.relevance_score }} | Clarity: {{ a.clarity_score }} |
       Completeness: {{ a.completeness_score }} | Grammar: {{ a.grammar_score }}</small></p>

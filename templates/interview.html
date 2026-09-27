@@ -3,9 +3,111 @@
 <h2>{{ iv.category }} Interview ({{ iv.difficulty }})</h2>
 <p>Question {{ current.question_order }} of {{ iv.number_of_questions }}</p>
 <h3>{{ current.question_text }}</h3>
-<form method="POST">
-  <input type="hidden" name="interview_question_id" value="{{ current.interview_question_id }}">
-  <textarea name="answer" rows="8" cols="70" placeholder="Type your answer here..." required></textarea><br>
-  <button type="submit">Submit answer</button>
-</form>
+
+<button id="recordBtn">Start recording</button>
+<button id="stopBtn" disabled>Stop</button>
+<span id="timer">0:00</span>
+<p id="status">Click "Start recording" when you're ready to answer.</p>
+<audio id="preview" controls hidden></audio><br>
+<button id="submitBtn" hidden>Submit answer</button>
+
+<script>
+const questionId = "{{ current.interview_question_id }}";
+const MAX_SECONDS = 180;
+const recordBtn = document.getElementById("recordBtn");
+const stopBtn = document.getElementById("stopBtn");
+const submitBtn = document.getElementById("submitBtn");
+const statusEl = document.getElementById("status");
+const timerEl = document.getElementById("timer");
+const preview = document.getElementById("preview");
+let recorder, stream, chunks = [], wavBlob = null, timerId, seconds = 0;
+
+recordBtn.onclick = async () => {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    statusEl.textContent = "Microphone access was blocked. Allow it in your browser, then try again.";
+    return;
+  }
+  chunks = [];
+  recorder = new MediaRecorder(stream);
+  recorder.ondataavailable = e => chunks.push(e.data);
+  recorder.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    statusEl.textContent = "Preparing your recording...";
+    wavBlob = await toWav(new Blob(chunks, { type: recorder.mimeType }));
+    preview.src = URL.createObjectURL(wavBlob);
+    preview.hidden = false;
+    submitBtn.hidden = false;
+    recordBtn.disabled = false;
+    recordBtn.textContent = "Record again";
+    statusEl.textContent = "Listen back if you like, then submit your answer.";
+  };
+  recorder.start();
+  seconds = 0;
+  timerEl.textContent = "0:00";
+  timerId = setInterval(() => {
+    seconds++;
+    timerEl.textContent = Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
+    if (seconds >= MAX_SECONDS) stopBtn.click();
+  }, 1000);
+  recordBtn.disabled = true;
+  stopBtn.disabled = false;
+  preview.hidden = true;
+  submitBtn.hidden = true;
+  statusEl.textContent = "Recording... speak your answer.";
+};
+
+stopBtn.onclick = () => {
+  if (recorder && recorder.state === "recording") recorder.stop();
+  clearInterval(timerId);
+  stopBtn.disabled = true;
+};
+
+submitBtn.onclick = async () => {
+  submitBtn.disabled = true;
+  recordBtn.disabled = true;
+  statusEl.textContent = "Uploading and analyzing your answer... this can take a few seconds.";
+  const form = new FormData();
+  form.append("interview_question_id", questionId);
+  form.append("audio", wavBlob, "answer.wav");
+  try {
+    const res = await fetch(window.location.href, { method: "POST", body: form });
+    const data = await res.json().catch(() => ({ ok: true }));
+    if (data.ok || res.status === 409) {
+      statusEl.textContent = "Saved! Loading the next step...";
+      window.location.reload();
+      return;
+    }
+    statusEl.textContent = data.error;
+  } catch (e) {
+    statusEl.textContent = "Upload failed. Check your connection and submit again.";
+  }
+  submitBtn.disabled = false;
+  recordBtn.disabled = false;
+};
+
+// Convert the browser recording into a mono 16-bit WAV file that Gemini can read
+async function toWav(blob) {
+  const ctx = new AudioContext({ sampleRate: 16000 });
+  const audio = await ctx.decodeAudioData(await blob.arrayBuffer());
+  const data = audio.getChannelData(0);
+  const rate = audio.sampleRate;
+  const buffer = new ArrayBuffer(44 + data.length * 2);
+  const view = new DataView(buffer);
+  const writeStr = (offset, s) => { for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i)); };
+  writeStr(0, "RIFF"); view.setUint32(4, 36 + data.length * 2, true);
+  writeStr(8, "WAVE"); writeStr(12, "fmt ");
+  view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true);
+  view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true);
+  view.setUint16(32, 2, true); view.setUint16(34, 16, true);
+  writeStr(36, "data"); view.setUint32(40, data.length * 2, true);
+  for (let i = 0; i < data.length; i++) {
+    const s = Math.max(-1, Math.min(1, data[i]));
+    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  ctx.close();
+  return new Blob([view], { type: "audio/wav" });
+}
+</script>
 {% endblock %}

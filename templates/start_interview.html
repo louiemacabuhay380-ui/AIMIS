@@ -15,7 +15,15 @@
   <label>Number of questions:
     <input name="number_of_questions" type="number" min="1" max="10" value="3">
   </label><br>
+
+  <p><label>
+    <input type="checkbox" name="consent" value="yes" required>
+    I agree to have my voice recorded during this interview. My recordings and answers
+    will only be used to analyze my performance and give me feedback.
+  </label></p>
+
   <button type="submit">Begin</button>
 </form>
 <p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
 {% endblock %}
+
