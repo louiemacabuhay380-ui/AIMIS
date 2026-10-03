@@ -47,11 +47,18 @@
     <td>{{ i.difficulty }}</td>
     <td>{{ i.number_of_questions }}</td>
     <td>{{ i.status }}</td>
-    <td>
+        <td>
       {% if i.status == 'in_progress' %}
         <a href="{{ url_for('interview', interview_id=i.interview_id) }}">Continue</a>
-      {% else %}
+        <form method="POST" action="{{ url_for('cancel_interview', interview_id=i.interview_id) }}"
+              style="display:inline;"
+              onsubmit="return confirm('Cancel this interview? Any answers you recorded for it will be deleted.');">
+          <button type="submit">Cancel</button>
+        </form>
+      {% elif i.status == 'completed' %}
         <a href="{{ url_for('interview_summary', interview_id=i.interview_id) }}">View</a>
+      {% else %}
+        Cancelled
       {% endif %}
     </td>
   </tr>

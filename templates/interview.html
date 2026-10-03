@@ -11,6 +11,12 @@
 <audio id="preview" controls hidden></audio><br>
 <button id="submitBtn" hidden>Submit answer</button>
 
+<form method="POST" action="{{ url_for('cancel_interview', interview_id=iv.interview_id) }}"
+      style="margin-top:24px;"
+      onsubmit="return confirm('Cancel this interview? Any answers you recorded for it will be deleted.');">
+  <button type="submit">Cancel interview</button>
+</form>
+
 <script>
 const questionId = "{{ current.interview_question_id }}";
 const MAX_SECONDS = 180;
@@ -109,5 +115,6 @@ async function toWav(blob) {
   ctx.close();
   return new Blob([view], { type: "audio/wav" });
 }
+
 </script>
 {% endblock %}

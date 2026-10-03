@@ -528,6 +528,35 @@ def run_processing(interview_id):
         return jsonify(ok=False, error="We couldn't finish analyzing your interview. "
                                        "Your answers are saved. Please try again."), 503
 
+@app.route("/interview/<int:interview_id>/cancel", methods=["POST"])
+@login_required
+def cancel_interview(interview_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""UPDATE interviews SET status = 'cancelled'
+                      WHERE interview_id = %s AND user_id = %s AND status = 'in_progress'""",
+                   (interview_id, session["user_id"]))
+    conn.commit()
+    if cursor.rowcount == 0:
+        conn.close()
+        flash("That interview can't be cancelled.")
+        return redirect(url_for("dashboard"))
+
+    # Delete the recordings saved so far; a cancelled interview is never evaluated
+    cursor.execute("""SELECT r.response_id, r.audio_path FROM responses r
+                      JOIN interview_questions iq ON iq.interview_question_id = r.interview_question_id
+                      WHERE iq.interview_id = %s AND r.audio_path IS NOT NULL""", (interview_id,))
+    for response_id, audio_path in cursor.fetchall():
+        full_path = os.path.join(app.root_path, audio_path)
+        if os.path.exists(full_path):
+            os.remove(full_path)
+        cursor.execute("UPDATE responses SET audio_path = NULL WHERE response_id = %s", (response_id,))
+    conn.commit()
+    conn.close()
+
+    flash("Interview cancelled.")
+    return redirect(url_for("dashboard"))
+
 
 if __name__ == "__main__":
     app.run(debug=True)
