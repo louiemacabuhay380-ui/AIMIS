@@ -11,6 +11,7 @@ from ai_service import analyze_interview, transcribe_answer
 import io
 from flask import Response
 from cryptography.fernet import Fernet, InvalidToken
+from concurrent.futures import ThreadPoolExecutor
 
 load_dotenv()
 app = Flask(__name__)
@@ -49,6 +50,9 @@ def evaluate_interview(interview_id):
                       JOIN responses r ON r.interview_question_id = iq.interview_question_id
                       WHERE iq.interview_id = %s ORDER BY iq.question_order""", (interview_id,))
     qa_list = cursor.fetchall()
+    if any(qa["transcript"] is None for qa in qa_list):
+            conn.close()
+            raise RuntimeError("Some answers haven't been transcribed yet. Run process_interview instead.")
 
     result = analyze_interview(iv["category"], iv["difficulty"], qa_list)
 
@@ -96,6 +100,60 @@ def evaluate_interview(interview_id):
     cursor.execute("UPDATE interviews SET overall_score = %s WHERE interview_id = %s", (overall, interview_id))
     conn.commit()
     conn.close()
+    
+def transcribe_pending(interview_id):
+    """Transcribe every answer in this interview that hasn't been transcribed yet."""
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""SELECT r.response_id, r.audio_path, r.duration, qb.question_text
+                      FROM responses r
+                      JOIN interview_questions iq ON iq.interview_question_id = r.interview_question_id
+                      JOIN question_bank qb ON qb.question_id = iq.question_id
+                      WHERE iq.interview_id = %s
+                        AND r.transcript IS NULL AND r.audio_path IS NOT NULL""", (interview_id,))
+    pending = cursor.fetchall()
+
+    def work(row):
+        with open(os.path.join(app.root_path, row["audio_path"]), "rb") as f:
+            audio_bytes = fernet.decrypt(f.read())
+        return row, transcribe_answer(row["question_text"], audio_bytes)
+
+    failed = 0
+    with ThreadPoolExecutor(max_workers=3) as pool:   # transcribe 3 answers at a time
+        futures = [pool.submit(work, row) for row in pending]
+        for future in futures:
+            try:
+                row, result = future.result()
+            except Exception as e:
+                print("Transcription failed:", e)
+                failed += 1
+                continue
+
+            transcript = (result.get("transcript") or "").strip()
+            duration = float(row["duration"])
+            speaking_rate = round(len(transcript.split()) / (duration / 60), 2) if duration else 0
+
+            cursor.execute("UPDATE responses SET transcript = %s WHERE response_id = %s",
+                           (transcript, row["response_id"]))
+            cursor.execute("DELETE FROM speech_analysis WHERE response_id = %s", (row["response_id"],))
+            cursor.execute("""INSERT INTO speech_analysis
+                              (response_id, speaking_rate, filler_word_count, pause_count,
+                               speech_duration, fluency_score)
+                              VALUES (%s, %s, %s, %s, %s, %s)""",
+                           (row["response_id"], speaking_rate, int(result.get("filler_word_count", 0)),
+                            int(result.get("pause_count", 0)), duration,
+                            min(max(float(result.get("fluency_score", 0)), 0), 100)))
+            conn.commit()
+    conn.close()
+
+    if failed:
+        raise RuntimeError(f"{failed} answer(s) could not be transcribed.")
+
+
+def process_interview(interview_id):
+    """Transcribe all answers, then evaluate the whole interview."""
+    transcribe_pending(interview_id)
+    evaluate_interview(interview_id)
 
 @app.route("/")
 def index():
@@ -286,15 +344,10 @@ def interview(interview_id):
 
     if not current:
         cursor.execute("""UPDATE interviews SET status = 'completed', completed_at = NOW()
-                          WHERE interview_id = %s""", (interview_id,))
+                          WHERE interview_id = %s AND status = 'in_progress'""", (interview_id,))
         conn.commit()
         conn.close()
-        try:
-            evaluate_interview(interview_id)
-        except Exception as e:
-            print("Evaluation failed:", e)
-            flash("Your answers were saved, but the AI evaluation failed. You can retry below.")
-        return redirect(url_for("interview_summary", interview_id=interview_id))
+        return redirect(url_for("processing", interview_id=interview_id))
 
     if request.method == "POST":
         submitted_id = int(request.form.get("interview_question_id", 0))
@@ -317,34 +370,15 @@ def interview(interview_id):
         if duration < 2:
             conn.close()
             return jsonify(ok=False, error="That recording is too short. Please answer again."), 400
-        try:
-            result = transcribe_answer(current["question_text"], audio_bytes)
-        except Exception as e:
-            print("Transcription failed:", e)
-            conn.close()
-            return jsonify(ok=False, error="We couldn't process your recording right now. Please submit again."), 503
-
-        transcript = (result.get("transcript") or "").strip()
-        if not transcript:
-            conn.close()
-            return jsonify(ok=False, error="We couldn't hear an answer. Check your microphone and try again."), 400
 
         filename = f"interview{interview_id}_q{submitted_id}.wav.enc"
         with open(os.path.join(AUDIO_DIR, filename), "wb") as f:
             f.write(fernet.encrypt(audio_bytes))
-        speaking_rate = round(len(transcript.split()) / (duration / 60), 2)   # words per minute
 
-        cursor.execute("""INSERT INTO responses (interview_question_id, transcript, audio_path, duration)
-                          VALUES (%s, %s, %s, %s)""",
-                       (submitted_id, transcript, f"uploads/audio/{filename}", duration))
-        response_id = cursor.lastrowid
-        cursor.execute("""INSERT INTO speech_analysis
-                          (response_id, speaking_rate, filler_word_count, pause_count,
-                           speech_duration, fluency_score)
-                          VALUES (%s, %s, %s, %s, %s, %s)""",
-                       (response_id, speaking_rate, int(result.get("filler_word_count", 0)),
-                        int(result.get("pause_count", 0)), duration,
-                        min(max(float(result.get("fluency_score", 0)), 0), 100)))
+        # Save the answer now. Transcription and analysis happen after the last question.
+        cursor.execute("""INSERT INTO responses (interview_question_id, audio_path, duration)
+                          VALUES (%s, %s, %s)""",
+                       (submitted_id, f"uploads/audio/{filename}", duration))
         conn.commit()
         conn.close()
         return jsonify(ok=True)
@@ -400,7 +434,7 @@ def retry_evaluation(interview_id):
         flash("Interview not found.")
         return redirect(url_for("dashboard"))
     try:
-        evaluate_interview(interview_id)
+        process_interview(interview_id)(interview_id)
         flash("Evaluation complete!")
     except Exception as e:
         print("Evaluation failed:", e)
@@ -455,6 +489,45 @@ def device_check(interview_id):
         return redirect(url_for("interview", interview_id=interview_id))
 
     return render_template("device_check.html", iv=iv)
+
+@app.route("/interview/<int:interview_id>/processing")
+@login_required
+def processing(interview_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("""SELECT * FROM interviews WHERE interview_id = %s AND user_id = %s
+                      AND status = 'completed'""", (interview_id, session["user_id"]))
+    iv = cursor.fetchone()
+    cursor.execute("SELECT evaluation_id FROM evaluations WHERE interview_id = %s", (interview_id,))
+    already_done = cursor.fetchone()
+    conn.close()
+    if not iv:
+        flash("Interview not found.")
+        return redirect(url_for("dashboard"))
+    if already_done:
+        return redirect(url_for("interview_summary", interview_id=interview_id))
+    return render_template("processing.html", iv=iv)
+
+
+@app.route("/interview/<int:interview_id>/process", methods=["POST"])
+@login_required
+def run_processing(interview_id):
+    conn = get_db()
+    cursor = conn.cursor()
+    cursor.execute("""SELECT interview_id FROM interviews WHERE interview_id = %s AND user_id = %s
+                      AND status = 'completed'""", (interview_id, session["user_id"]))
+    found = cursor.fetchone()
+    conn.close()
+    if not found:
+        return jsonify(ok=False, error="Interview not found."), 404
+    try:
+        process_interview(interview_id)
+        return jsonify(ok=True)
+    except Exception as e:
+        print("Processing failed:", e)
+        return jsonify(ok=False, error="We couldn't finish analyzing your interview. "
+                                       "Your answers are saved. Please try again."), 503
+
 
 if __name__ == "__main__":
     app.run(debug=True)

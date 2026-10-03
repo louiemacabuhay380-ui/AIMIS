@@ -67,7 +67,7 @@ stopBtn.onclick = () => {
 submitBtn.onclick = async () => {
   submitBtn.disabled = true;
   recordBtn.disabled = true;
-  statusEl.textContent = "Uploading and analyzing your answer... this can take a few seconds.";
+  statusEl.textContent = "Saving your answer...";
   const form = new FormData();
   form.append("interview_question_id", questionId);
   form.append("audio", wavBlob, "answer.wav");

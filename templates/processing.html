@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Analyzing your interview...</h2>
+<p id="status">AIMIS is transcribing your answers and evaluating your interview.
+  This can take up to a minute. Please don't close this page.</p>
+<p id="timer"></p>
+<button id="retryBtn" hidden>Try again</button>
+
+<script>
+const statusEl = document.getElementById("status");
+const timerEl = document.getElementById("timer");
+const retryBtn = document.getElementById("retryBtn");
+const processUrl = "{{ url_for('run_processing', interview_id=iv.interview_id) }}";
+const summaryUrl = "{{ url_for('interview_summary', interview_id=iv.interview_id) }}";
+let seconds = 0, timerId;
+
+async function run() {
+  retryBtn.hidden = true;
+  seconds = 0;
+  timerId = setInterval(() => { seconds++; timerEl.textContent = "Elapsed: " + seconds + "s"; }, 1000);
+  try {
+    const res = await fetch(processUrl, { method: "POST" });
+    const data = await res.json();
+    if (data.ok) {
+      window.location.href = summaryUrl;
+      return;
+    }
+    statusEl.textContent = data.error;
+  } catch (e) {
+    statusEl.textContent = "Connection problem. Your answers are saved. Please try again.";
+  }
+  clearInterval(timerId);
+  retryBtn.hidden = false;
+}
+
+retryBtn.onclick = run;
+run();
+</script>
+{% endblock %}
