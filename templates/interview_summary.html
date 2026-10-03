@@ -15,6 +15,11 @@
 {% endif %}
 
 {% for a in answers %}
+  {% if a.confidence_score is not none %}
+    <p><small>Confidence: {{ a.confidence_score }} | Pitch variation (tone): {{ a.pitch_variation }} semitones |
+      Volume variation: {{ a.volume_variation }} dB | Speaking time: {{ a.speech_ratio }}% |
+      Pauses: total {{ a.total_pause_time }}s, longest {{ a.longest_pause }}s</small></p>
+  {% endif %}
   <h4>Q{{ a.question_order }}. {{ a.question_text }}</h4>
   <p>{{ a.transcript or "(no answer)" }}</p>  {% if a.audio_path %}
     <audio controls src="{{ url_for('audio_file', filename=a.audio_path.split('/')[-1]) }}"></audio>

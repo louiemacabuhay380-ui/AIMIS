@@ -12,6 +12,7 @@ import io
 from flask import Response
 from cryptography.fernet import Fernet, InvalidToken
 from concurrent.futures import ThreadPoolExecutor
+from speech_service import analyze_audio
 
 load_dotenv()
 app = Flask(__name__)
@@ -79,8 +80,7 @@ def evaluate_interview(interview_id):
 
         quality = round(sum(all_scores) / len(all_scores), 2)
 
-    cursor.execute("""SELECT AVG(sa.fluency_score) AS speech_score
-                      FROM speech_analysis sa
+    cursor.execute("""SELECT AVG((sa.fluency_score + COALESCE(sa.confidence_score, sa.fluency_score)) / 2) AS speech_score                      FROM speech_analysis sa
                       JOIN responses r ON r.response_id = sa.response_id
                       JOIN interview_questions iq ON iq.interview_question_id = r.interview_question_id
                       WHERE iq.interview_id = %s""", (interview_id,))
@@ -102,7 +102,7 @@ def evaluate_interview(interview_id):
     conn.close()
     
 def transcribe_pending(interview_id):
-    """Transcribe every answer in this interview that hasn't been transcribed yet."""
+    """Transcribe and measure every answer in this interview that hasn't been processed yet."""
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     cursor.execute("""SELECT r.response_id, r.audio_path, r.duration, qb.question_text
@@ -114,16 +114,18 @@ def transcribe_pending(interview_id):
     pending = cursor.fetchall()
 
     def work(row):
-        with open(os.path.join(app.root_path, row["audio_path"]), "rb") as f:
-            audio_bytes = fernet.decrypt(f.read())
-        return row, transcribe_answer(row["question_text"], audio_bytes)
+        with open(os.path.join(app.root_path, row["audio_path"]), "rb") as file:
+            audio_bytes = fernet.decrypt(file.read())
+        result = transcribe_answer(row["question_text"], audio_bytes)
+        features = analyze_audio(audio_bytes, int(result.get("filler_word_count", 0)))
+        return row, result, features
 
     failed = 0
-    with ThreadPoolExecutor(max_workers=3) as pool:   # transcribe 3 answers at a time
+    with ThreadPoolExecutor(max_workers=3) as pool:   # process 3 answers at a time
         futures = [pool.submit(work, row) for row in pending]
         for future in futures:
             try:
-                row, result = future.result()
+                row, result, features = future.result()
             except Exception as e:
                 print("Transcription failed:", e)
                 failed += 1
@@ -132,17 +134,23 @@ def transcribe_pending(interview_id):
             transcript = (result.get("transcript") or "").strip()
             duration = float(row["duration"])
             speaking_rate = round(len(transcript.split()) / (duration / 60), 2) if duration else 0
+            f = features or {}
 
             cursor.execute("UPDATE responses SET transcript = %s WHERE response_id = %s",
                            (transcript, row["response_id"]))
             cursor.execute("DELETE FROM speech_analysis WHERE response_id = %s", (row["response_id"],))
             cursor.execute("""INSERT INTO speech_analysis
                               (response_id, speaking_rate, filler_word_count, pause_count,
-                               speech_duration, fluency_score)
-                              VALUES (%s, %s, %s, %s, %s, %s)""",
+                               speech_duration, fluency_score, total_pause_time, longest_pause,
+                               average_pause, pitch_variation, average_volume, volume_variation,
+                               speech_ratio, confidence_score)
+                              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                            (row["response_id"], speaking_rate, int(result.get("filler_word_count", 0)),
-                            int(result.get("pause_count", 0)), duration,
-                            min(max(float(result.get("fluency_score", 0)), 0), 100)))
+                            f.get("pause_count", 0), duration,
+                            min(max(float(result.get("fluency_score", 0)), 0), 100),
+                            f.get("total_pause_time"), f.get("longest_pause"), f.get("average_pause"),
+                            f.get("pitch_variation"), f.get("average_volume"), f.get("volume_variation"),
+                            f.get("speech_ratio"), f.get("confidence_score", 0)))
             conn.commit()
     conn.close()
 
@@ -400,16 +408,18 @@ def interview_summary(interview_id):
         return redirect(url_for("dashboard"))
 
     cursor.execute("""SELECT iq.question_order, qb.question_text, r.transcript, r.audio_path,
-                      n.relevance_score, n.clarity_score, n.completeness_score, n.grammar_score,
-                      n.word_count, n.vocabulary_diversity, n.keyword_count, n.keywords_found,
-                      s.speaking_rate, s.filler_word_count, s.pause_count, s.fluency_score
-                      FROM interview_questions iq
-                      JOIN question_bank qb ON qb.question_id = iq.question_id
-                      LEFT JOIN responses r ON r.interview_question_id = iq.interview_question_id
-                      LEFT JOIN nlp_analysis n ON n.response_id = r.response_id
-                      LEFT JOIN speech_analysis s ON s.response_id = r.response_id
-                      WHERE iq.interview_id = %s
-                      ORDER BY iq.question_order""", (interview_id,))
+                    n.relevance_score, n.clarity_score, n.completeness_score, n.grammar_score,
+                    n.word_count, n.vocabulary_diversity, n.keyword_count, n.keywords_found,
+                    s.speaking_rate, s.filler_word_count, s.pause_count, s.fluency_score, s.total_pause_time,
+                    s.longest_pause, s.pitch_variation,
+                    s.volume_variation, s.speech_ratio, s.confidence_score
+                    FROM interview_questions iq
+                    JOIN question_bank qb ON qb.question_id = iq.question_id
+                    LEFT JOIN responses r ON r.interview_question_id = iq.interview_question_id
+                    LEFT JOIN nlp_analysis n ON n.response_id = r.response_id
+                    LEFT JOIN speech_analysis s ON s.response_id = r.response_id
+                    WHERE iq.interview_id = %s
+                    ORDER BY iq.question_order""", (interview_id,))
     answers = cursor.fetchall()
     cursor.execute("SELECT * FROM evaluations WHERE interview_id = %s", (interview_id,))
     evaluation = cursor.fetchone()
