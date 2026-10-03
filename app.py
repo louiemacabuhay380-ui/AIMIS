@@ -20,7 +20,7 @@ app.secret_key = os.getenv("SECRET_KEY")
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024   # max 25 MB upload
 AUDIO_DIR = os.path.join(app.root_path, "uploads", "audio")
 os.makedirs(AUDIO_DIR, exist_ok=True)
-CONSENT_VERSION = "v1.0"
+CONSENT_VERSION = "v1.1"
 _audio_key = os.getenv("AUDIO_ENCRYPTION_KEY")
 if not _audio_key:
     raise RuntimeError("AUDIO_ENCRYPTION_KEY is missing from .env")
