@@ -9,32 +9,40 @@
     {% if evaluation.speech_performance_score is not none %}
       | Speech delivery: {{ evaluation.speech_performance_score }}
     {% endif %}</p>
+{% elif iv.status == 'completed' %}
+  <p>This interview hasn't been evaluated yet.</p>
   <form method="POST" action="{{ url_for('retry_evaluation', interview_id=iv.interview_id) }}">
     <button type="submit">Run AI evaluation</button>
   </form>
 {% endif %}
 
 {% for a in answers %}
-  {% if a.confidence_score is not none %}
-    <p><small>Confidence: {{ a.confidence_score }} | Pitch variation (tone): {{ a.pitch_variation }} semitones |
-      Volume variation: {{ a.volume_variation }} dB | Speaking time: {{ a.speech_ratio }}% |
-      Pauses: total {{ a.total_pause_time }}s, longest {{ a.longest_pause }}s</small></p>
-  {% endif %}
   <h4>Q{{ a.question_order }}. {{ a.question_text }}</h4>
-  <p>{{ a.transcript or "(no answer)" }}</p>  {% if a.audio_path %}
+  <p>{{ a.transcript or "(no answer)" }}</p>
+
+  {% if a.audio_path %}
     <audio controls src="{{ url_for('audio_file', filename=a.audio_path.split('/')[-1]) }}"></audio>
-      {% if a.word_count is not none %}
-    <p><small>Words: {{ a.word_count }} | Vocabulary diversity: {{ a.vocabulary_diversity }}% |
+  {% endif %}
+
+  {% if a.relevance_score is not none %}
+    <p><small><b>Answer content:</b> Relevance: {{ a.relevance_score }} | Answer clarity: {{ a.clarity_score }} |
+      Completeness: {{ a.completeness_score }} | Grammar: {{ a.grammar_score }}</small></p>
+  {% endif %}
+
+  {% if a.word_count is not none %}
+    <p><small><b>Text measurements:</b> Words: {{ a.word_count }} | Vocabulary diversity: {{ a.vocabulary_diversity }}% |
       Keywords ({{ a.keyword_count }}): {{ a.keywords_found or "none" }}</small></p>
   {% endif %}
-  {% endif %}
+
   {% if a.fluency_score is not none %}
-    <p><small>Speaking rate: {{ a.speaking_rate }} words/min | Filler words: {{ a.filler_word_count }} |
+    <p><small><b>Speech:</b> Speaking rate: {{ a.speaking_rate }} words/min | Filler words: {{ a.filler_word_count }} |
       Pauses: {{ a.pause_count }} | Fluency: {{ a.fluency_score }}</small></p>
   {% endif %}
-  {% if a.relevance_score is not none %}
-    <p><small>Relevance: {{ a.relevance_score }} | Clarity: {{ a.clarity_score }} |
-      Completeness: {{ a.completeness_score }} | Grammar: {{ a.grammar_score }}</small></p>
+
+  {% if a.confidence_score is not none %}
+    <p><small><b>Voice:</b> Confidence: {{ a.confidence_score }} | Speech clarity: {{ a.speech_clarity }} |
+      Pitch variation (tone): {{ a.pitch_variation }} semitones | Volume variation: {{ a.volume_variation }} dB |
+      Speaking time: {{ a.speech_ratio }}% | Pauses: total {{ a.total_pause_time }}s, longest {{ a.longest_pause }}s</small></p>
   {% endif %}
 {% endfor %}
 

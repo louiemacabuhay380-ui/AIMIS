@@ -24,9 +24,13 @@ def analyze_audio(audio_bytes, filler_count=0):
     gaps = [(intervals[i + 1][0] - intervals[i][1]) / sr for i in range(len(intervals) - 1)]
     pauses = [g for g in gaps if g >= PAUSE_MIN_SECONDS]
 
-    # --- Pitch variation (tone), in semitones so it's comparable between low and high voices
-    f0, voiced, _ = librosa.pyin(y, fmin=65, fmax=400, sr=sr, frame_length=1024)
-    f0 = f0[voiced & ~np.isnan(f0)]
+        # --- Pitch variation (tone), in semitones so it's comparable between low and high voices
+    f0 = librosa.yin(y, fmin=65, fmax=400, sr=sr, frame_length=1024, hop_length=256)
+    frame_db = librosa.amplitude_to_db(
+        librosa.feature.rms(y=y, frame_length=1024, hop_length=256)[0], ref=1.0)
+    n = min(len(f0), len(frame_db))
+    speaking = frame_db[:n] > frame_db.max() - SILENCE_DB          # only frames where they're talking
+    f0 = f0[:n][speaking & (f0[:n] > 70) & (f0[:n] < 395)]          # drop silence and edge readings
     if len(f0) > 10:
         semitones = 12 * np.log2(f0 / np.median(f0))
         pitch_variation = float(np.std(semitones))

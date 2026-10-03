@@ -29,7 +29,8 @@ fernet = Fernet(_audio_key.encode())
 def get_db():
     return mysql.connector.connect(
         host=os.getenv("DB_HOST"), user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"), database=os.getenv("DB_NAME"))
+        password=os.getenv("DB_PASSWORD"), database=os.getenv("DB_NAME"),
+        buffered=True)
 
 def login_required(f):
     @wraps(f)
@@ -80,7 +81,8 @@ def evaluate_interview(interview_id):
 
         quality = round(sum(all_scores) / len(all_scores), 2)
 
-    cursor.execute("""SELECT AVG((sa.fluency_score + COALESCE(sa.confidence_score, sa.fluency_score)) / 2) AS speech_score                      FROM speech_analysis sa
+        cursor.execute("""SELECT AVG((sa.fluency_score + COALESCE(sa.confidence_score, sa.fluency_score)
+                                  + COALESCE(sa.clarity_score, sa.fluency_score)) / 3) AS speech_score                      FROM speech_analysis sa
                       JOIN responses r ON r.response_id = sa.response_id
                       JOIN interview_questions iq ON iq.interview_question_id = r.interview_question_id
                       WHERE iq.interview_id = %s""", (interview_id,))
@@ -140,17 +142,18 @@ def transcribe_pending(interview_id):
                            (transcript, row["response_id"]))
             cursor.execute("DELETE FROM speech_analysis WHERE response_id = %s", (row["response_id"],))
             cursor.execute("""INSERT INTO speech_analysis
-                              (response_id, speaking_rate, filler_word_count, pause_count,
-                               speech_duration, fluency_score, total_pause_time, longest_pause,
-                               average_pause, pitch_variation, average_volume, volume_variation,
-                               speech_ratio, confidence_score)
-                              VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                            (response_id, speaking_rate, filler_word_count, pause_count,
+                            speech_duration, fluency_score, total_pause_time, longest_pause,
+                            average_pause, pitch_variation, average_volume, volume_variation,
+                            speech_ratio, confidence_score, clarity_score)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                            (row["response_id"], speaking_rate, int(result.get("filler_word_count", 0)),
                             f.get("pause_count", 0), duration,
                             min(max(float(result.get("fluency_score", 0)), 0), 100),
                             f.get("total_pause_time"), f.get("longest_pause"), f.get("average_pause"),
                             f.get("pitch_variation"), f.get("average_volume"), f.get("volume_variation"),
-                            f.get("speech_ratio"), f.get("confidence_score", 0)))
+                            f.get("speech_ratio"), f.get("confidence_score", 0),
+                            min(max(float(result.get("clarity_score", 0)), 0), 100)))
             conn.commit()
     conn.close()
 
@@ -412,7 +415,7 @@ def interview_summary(interview_id):
                     n.word_count, n.vocabulary_diversity, n.keyword_count, n.keywords_found,
                     s.speaking_rate, s.filler_word_count, s.pause_count, s.fluency_score, s.total_pause_time,
                     s.longest_pause, s.pitch_variation,
-                    s.volume_variation, s.speech_ratio, s.confidence_score
+                    s.volume_variation, s.speech_ratio, s.confidence_score, s.volume_variation, s.speech_ratio, s.confidence_score, s.clarity_score AS speech_clarity
                     FROM interview_questions iq
                     JOIN question_bank qb ON qb.question_id = iq.question_id
                     LEFT JOIN responses r ON r.interview_question_id = iq.interview_question_id
