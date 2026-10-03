@@ -1,27 +1,56 @@
 {% extends "base.html" %}
+{% block title %}Analyzing · AIMIS{% endblock %}
+
 {% block content %}
-<h2>Analyzing your interview...</h2>
-<p id="status">AIMIS is transcribing your answers and evaluating your interview.
-  This can take up to a minute. Please don't close this page.</p>
-<p id="timer"></p>
-<button id="retryBtn" hidden>Try again</button>
+<div class="processing">
+  <h1>Analyzing Your Interview...</h1>
+  <ul id="steps" class="analyze-steps">
+    <li>Processing speech</li>
+    <li>Generating transcript</li>
+    <li>Analyzing responses</li>
+    <li>Analyzing speech delivery</li>
+    <li>Writing your feedback</li>
+  </ul>
+  <p id="status" class="muted">AIMIS is transcribing your answers and evaluating your interview.
+    This can take up to a minute. Please don't close this page.</p>
+  <p id="timer" class="muted small"></p>
+  <button id="retryBtn" class="btn" hidden>Try again</button>
+</div>
 
 <script>
 const statusEl = document.getElementById("status");
 const timerEl = document.getElementById("timer");
 const retryBtn = document.getElementById("retryBtn");
+const items = document.querySelectorAll("#steps li");
 const processUrl = "{{ url_for('run_processing', interview_id=iv.interview_id) }}";
 const summaryUrl = "{{ url_for('interview_summary', interview_id=iv.interview_id) }}";
 let seconds = 0, timerId;
 
+// The checklist moves along while the server works. It's only a visual guide:
+// the real result comes from the server below.
+function showStep(n) {
+  items.forEach((li, i) => {
+    li.classList.toggle("done", i < n);
+    li.classList.toggle("active", i === n);
+  });
+}
+
 async function run() {
   retryBtn.hidden = true;
+  statusEl.classList.remove("error-text");
   seconds = 0;
-  timerId = setInterval(() => { seconds++; timerEl.textContent = "Elapsed: " + seconds + "s"; }, 1000);
+  showStep(0);
+  timerId = setInterval(() => {
+    seconds++;
+    timerEl.textContent = "Elapsed: " + seconds + "s";
+    showStep(Math.min(items.length - 1, Math.floor(seconds / 6)));
+  }, 1000);
   try {
     const res = await fetch(processUrl, { method: "POST" });
     const data = await res.json();
     if (data.ok) {
+      clearInterval(timerId);
+      showStep(items.length);   // all done
       window.location.href = summaryUrl;
       return;
     }
@@ -30,6 +59,8 @@ async function run() {
     statusEl.textContent = "Connection problem. Your answers are saved. Please try again.";
   }
   clearInterval(timerId);
+  items.forEach(li => li.classList.remove("active"));
+  statusEl.classList.add("error-text");
   retryBtn.hidden = false;
 }
 

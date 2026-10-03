@@ -1,29 +1,51 @@
 {% extends "base.html" %}
+{% block title %}Start an interview · AIMIS{% endblock %}
+
 {% block content %}
-<h2>Start a mock interview</h2>
-<form method="POST">
-  <label>Category:
-    <select name="category">
+<div class="page-head">
+  <div>
+    <h1>Start a Mock Interview</h1>
+    <p>Choose what you want to practice. You'll answer each question out loud.</p>
+  </div>
+</div>
+
+<form method="POST" class="card form-dark">
+  <div class="field">
+    <label for="category">Interview focus</label>
+    <select id="category" name="category">
       {% for c in categories %}<option>{{ c }}</option>{% endfor %}
     </select>
-  </label><br>
-  <label>Difficulty:
-    <select name="difficulty">
-      <option>Beginner</option><option>Intermediate</option><option>Advanced</option>
-    </select>
-  </label><br>
-  <label>Number of questions:
-    <input name="number_of_questions" type="number" min="1" max="10" value="3">
-  </label><br>
+  </div>
 
-  <p><label>
-    <input type="checkbox" name="consent" value="yes" required>
-    I agree to have my voice recorded during this interview. My recordings and answers
-    will only be used to analyze my performance and give me feedback.
-  </label></p>
+  <div class="field">
+    <label>Difficulty</label>
+    <div class="choice-group">
+      {% for d in ["Beginner", "Intermediate", "Advanced"] %}
+        <label class="choice">
+          <input type="radio" name="difficulty" value="{{ d }}" {% if loop.first %}checked{% endif %}>
+          <span>{{ d }}</span>
+        </label>
+      {% endfor %}
+    </div>
+  </div>
 
-  <button type="submit">Begin</button>
+  <div class="field">
+    <label for="number_of_questions">Number of questions</label>
+    <input id="number_of_questions" name="number_of_questions" type="number" min="1" max="10" value="3">
+  </div>
+
+  <div class="consent-box">
+    <h2>Privacy and Consent</h2>
+    <p>AIMIS will record your voice during this interview. Your recordings and answers are only
+       used to analyze your performance and give you feedback.</p>
+    <label>
+      <input type="checkbox" name="consent" value="yes" required>
+      I understand and agree to be recorded.
+    </label>
+  </div>
+
+  <button type="submit" class="btn btn-block">Continue</button>
 </form>
-<p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
-{% endblock %}
 
+<a href="{{ url_for('dashboard') }}" class="back-link">← Back to dashboard</a>
+{% endblock %}

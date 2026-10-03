@@ -1,20 +1,48 @@
 {% extends "base.html" %}
-{% block content %}
-<h2>{{ iv.category }} Interview ({{ iv.difficulty }})</h2>
-<p>Question {{ current.question_order }} of {{ iv.number_of_questions }}</p>
-<h3>{{ current.question_text }}</h3>
+{% block title %}Interview · AIMIS{% endblock %}
 
-<button id="recordBtn">Start recording</button>
-<button id="stopBtn" disabled>Stop</button>
-<span id="timer">0:00</span>
-<p id="status">Click "Start recording" when you're ready to answer.</p>
-<audio id="preview" controls hidden></audio><br>
-<button id="submitBtn" hidden>Submit answer</button>
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ iv.category }} Interview</h1>
+    <p>{{ iv.difficulty }}</p>
+  </div>
+  <span class="progress-text">Question {{ current.question_order }} of {{ iv.number_of_questions }}</span>
+</div>
+
+<div class="steps" aria-hidden="true">
+  {% for n in range(1, iv.number_of_questions + 1) %}
+    <span class="{% if n < current.question_order %}done{% elif n == current.question_order %}now{% endif %}"></span>
+  {% endfor %}
+</div>
+
+<div class="card question-card">
+  <p class="question-label">Question {{ current.question_order }}</p>
+  <p class="question-text">{{ current.question_text }}</p>
+</div>
+
+<div class="card recorder" id="recorderCard">
+  <div class="rec-timer" id="timer">0:00</div>
+  <div class="rec-indicator"><span class="rec-dot"></span><span id="recLabel">Ready to record</span></div>
+
+  <div class="btn-row">
+    <button id="recordBtn" type="button" class="btn">Start recording</button>
+    <button id="stopBtn" type="button" class="btn btn-danger" disabled>Stop</button>
+  </div>
+
+  <audio id="preview" controls hidden></audio>
+  <p id="status" class="rec-status">Click "Start recording" when you're ready to answer. You have up to 3 minutes.</p>
+
+  <div class="btn-row">
+    <button id="submitBtn" type="button" class="btn" hidden>Submit answer</button>
+  </div>
+</div>
+
 
 <form method="POST" action="{{ url_for('cancel_interview', interview_id=iv.interview_id) }}"
-      style="margin-top:24px;"
+      style="margin-top:18px;"
       onsubmit="return confirm('Cancel this interview? Any answers you recorded for it will be deleted.');">
-  <button type="submit">Cancel interview</button>
+  <button type="submit" class="btn btn-outline">Cancel interview</button>
 </form>
 
 <script>
@@ -26,9 +54,22 @@ const submitBtn = document.getElementById("submitBtn");
 const statusEl = document.getElementById("status");
 const timerEl = document.getElementById("timer");
 const preview = document.getElementById("preview");
-let recorder, stream, chunks = [], wavBlob = null, timerId, seconds = 0;
+let recorder = null, stream = null, chunks = [], wavBlob = null, timerId = null, seconds = 0;
+let state = "idle";   // idle | recording | preparing | ready | uploading
+
+// One place controls every button, so they can never be used at the wrong time
+function setState(newState) {
+  state = newState;
+  recordBtn.disabled = !(state === "idle" || state === "ready");
+  stopBtn.disabled = state !== "recording";
+  submitBtn.disabled = state !== "ready";
+  submitBtn.hidden = !(state === "ready" || state === "uploading");
+  preview.hidden = !(state === "ready" || state === "uploading");
+  recordBtn.textContent = (state === "ready") ? "Record again" : "Start recording";
+}
 
 recordBtn.onclick = async () => {
+  if (state !== "idle" && state !== "ready") return;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e) {
@@ -36,43 +77,45 @@ recordBtn.onclick = async () => {
     return;
   }
   chunks = [];
+  wavBlob = null;                       // forget any previous take
   recorder = new MediaRecorder(stream);
   recorder.ondataavailable = e => chunks.push(e.data);
   recorder.onstop = async () => {
     stream.getTracks().forEach(t => t.stop());
+    setState("preparing");
     statusEl.textContent = "Preparing your recording...";
-    wavBlob = await toWav(new Blob(chunks, { type: recorder.mimeType }));
-    preview.src = URL.createObjectURL(wavBlob);
-    preview.hidden = false;
-    submitBtn.hidden = false;
-    recordBtn.disabled = false;
-    recordBtn.textContent = "Record again";
-    statusEl.textContent = "Listen back if you like, then submit your answer.";
+    try {
+      wavBlob = await toWav(new Blob(chunks, { type: recorder.mimeType }));
+      preview.src = URL.createObjectURL(wavBlob);
+      setState("ready");
+      statusEl.textContent = "Listen back if you like, then submit your answer.";
+    } catch (e) {
+      setState("idle");
+      statusEl.textContent = "Something went wrong with that recording. Please record again.";
+    }
   };
   recorder.start();
   seconds = 0;
   timerEl.textContent = "0:00";
+  clearInterval(timerId);
   timerId = setInterval(() => {
     seconds++;
     timerEl.textContent = Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
     if (seconds >= MAX_SECONDS) stopBtn.click();
   }, 1000);
-  recordBtn.disabled = true;
-  stopBtn.disabled = false;
-  preview.hidden = true;
-  submitBtn.hidden = true;
+  setState("recording");
   statusEl.textContent = "Recording... speak your answer.";
 };
 
 stopBtn.onclick = () => {
-  if (recorder && recorder.state === "recording") recorder.stop();
+  if (state !== "recording") return;
   clearInterval(timerId);
-  stopBtn.disabled = true;
+  recorder.stop();                      // onstop above takes over
 };
 
 submitBtn.onclick = async () => {
-  submitBtn.disabled = true;
-  recordBtn.disabled = true;
+  if (state !== "ready" || !wavBlob) return;   // ignore clicks at the wrong time
+  setState("uploading");
   statusEl.textContent = "Saving your answer...";
   const form = new FormData();
   form.append("interview_question_id", questionId);
@@ -81,7 +124,7 @@ submitBtn.onclick = async () => {
     const res = await fetch(window.location.href, { method: "POST", body: form });
     const data = await res.json().catch(() => ({ ok: true }));
     if (data.ok || res.status === 409) {
-      statusEl.textContent = "Saved! Loading the next step...";
+      statusEl.textContent = "Saved! Loading the next question...";
       window.location.reload();
       return;
     }
@@ -89,8 +132,7 @@ submitBtn.onclick = async () => {
   } catch (e) {
     statusEl.textContent = "Upload failed. Check your connection and submit again.";
   }
-  submitBtn.disabled = false;
-  recordBtn.disabled = false;
+  setState("ready");                    // let them retry or record again
 };
 
 // Convert the browser recording into a mono 16-bit WAV file that Gemini can read
@@ -116,5 +158,9 @@ async function toWav(blob) {
   return new Blob([view], { type: "audio/wav" });
 }
 
+setState("idle");
+</script>
+
+setState("idle");
 </script>
 {% endblock %}

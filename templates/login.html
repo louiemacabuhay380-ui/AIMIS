@@ -1,10 +1,30 @@
 {% extends "base.html" %}
+{% block title %}Sign in · AIMIS{% endblock %}
+{% block body_class %}auth-page{% endblock %}
+
 {% block content %}
-<h2>Log in</h2>
-<form method="POST">
-  <input name="email" type="email" placeholder="Email" required><br>
-  <input name="password" type="password" placeholder="Password" required><br>
-  <button type="submit">Log in</button>
-</form>
-<p>No account yet? <a href="{{ url_for('register') }}">Register</a></p>
+<div class="auth-card">
+  <h1>Welcome</h1>
+  <p class="auth-sub">Sign in to continue to your account</p>
+
+  <form method="POST" action="{{ url_for('login') }}">
+    <div class="field">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="email" required>
+    </div>
+
+    <div class="field">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+    </div>
+
+    <button type="submit" class="btn btn-block">Sign in</button>
+  </form>
+
+  <div class="divider"><span>or</span></div>
+
+  <p class="auth-footer">
+    Don't have an account? <a href="{{ url_for('register') }}" class="link">Sign up</a>
+  </p>
+</div>
 {% endblock %}
