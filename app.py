@@ -1,3 +1,4 @@
+import json
 import os
 import wave
 from functools import wraps
@@ -86,16 +87,29 @@ def evaluate_interview(interview_id):
                       JOIN responses r ON r.response_id = sa.response_id
                       JOIN interview_questions iq ON iq.interview_question_id = r.interview_question_id
                       WHERE iq.interview_id = %s""", (interview_id,))
-    speech = cursor.fetchone()["speech_score"]
-    if speech is not None:
-        speech = round(float(speech), 2)
-        overall = round(quality * 0.7 + speech * 0.3, 2)   # adjust weights to match your paper
-    else:
-        overall = quality   # older typed-answer interviews have no speech data
+        speech = cursor.fetchone()["speech_score"]
+    speech = round(float(speech), 2) if speech is not None else None
+
+    cursor.execute("""SELECT AVG((ba.eye_contact_score + ba.facial_expression_score
+                                  + ba.gesture_score) / 3) AS behavior_score
+                      FROM behavior_analysis ba
+                      JOIN responses r ON r.response_id = ba.response_id
+                      JOIN interview_questions iq ON iq.interview_question_id = r.interview_question_id
+                      WHERE iq.interview_id = %s""", (interview_id,))
+    behavior = cursor.fetchone()["behavior_score"]
+    behavior = round(float(behavior), 2) if behavior is not None else None
+
+    # Weights: answer content 60%, speech delivery 25%, behavior 15%.
+    # Parts that are missing (e.g. older interviews without camera data) are left out.
+    parts = [(quality, 0.60), (speech, 0.25), (behavior, 0.15)]
+    available = [(value, weight) for value, weight in parts if value is not None]
+    overall = round(sum(v * w for v, w in available) / sum(w for _, w in available), 2)
 
     cursor.execute("""INSERT INTO evaluations
-                      (interview_id, response_quality_score, speech_performance_score, overall_score)
-                      VALUES (%s, %s, %s, %s)""", (interview_id, quality, speech, overall))
+                    (interview_id, response_quality_score, speech_performance_score,
+                    behavioral_score, overall_score)
+                    VALUES (%s, %s, %s, %s, %s)""",
+                   (interview_id, quality, speech, behavior, overall))
     cursor.execute("""INSERT INTO feedback (interview_id, strengths, areas_to_improve, recommendations)
                       VALUES (%s, %s, %s, %s)""",
                    (interview_id, result["strengths"], result["areas_to_improve"], result["recommendations"]))
@@ -390,6 +404,22 @@ def interview(interview_id):
         cursor.execute("""INSERT INTO responses (interview_question_id, audio_path, duration)
                           VALUES (%s, %s, %s)""",
                        (submitted_id, f"uploads/audio/{filename}", duration))
+        response_id = cursor.lastrowid
+        behavior = request.form.get("behavior")
+        if behavior:
+            try:
+                b = json.loads(behavior)
+                values = [min(max(float(b.get(k, 0)), 0), 100) for k in
+                          ("eye_contact_score", "face_visibility_score", "facial_expression_score",
+                           "gesture_score", "smile_ratio", "gesture_ratio")]
+                cursor.execute("""INSERT INTO behavior_analysis
+                                  (response_id, eye_contact_score, face_visibility_score,
+                                   facial_expression_score, gesture_score, smile_ratio,
+                                   gesture_ratio, frames_analyzed)
+                                  VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                               (response_id, *values, int(b.get("frames_analyzed", 0))))
+            except (ValueError, TypeError, AttributeError):
+                pass   # invalid data from the browser: skip behavior for this answer
         conn.commit()
         conn.close()
         return jsonify(ok=True)
@@ -415,12 +445,15 @@ def interview_summary(interview_id):
                     n.word_count, n.vocabulary_diversity, n.keyword_count, n.keywords_found,
                     s.speaking_rate, s.filler_word_count, s.pause_count, s.fluency_score, s.total_pause_time,
                     s.longest_pause, s.pitch_variation,
-                    s.volume_variation, s.speech_ratio, s.confidence_score, s.volume_variation, s.speech_ratio, s.confidence_score, s.clarity_score AS speech_clarity
+                    s.volume_variation, s.speech_ratio, s.confidence_score, s.volume_variation, s.speech_ratio,
+                    s.confidence_score, s.clarity_score AS speech_clarity, b.eye_contact_score, b.face_visibility_score, b.facial_expression_score,
+                    b.gesture_score, b.smile_ratio, b.gesture_ratio
                     FROM interview_questions iq
                     JOIN question_bank qb ON qb.question_id = iq.question_id
                     LEFT JOIN responses r ON r.interview_question_id = iq.interview_question_id
                     LEFT JOIN nlp_analysis n ON n.response_id = r.response_id
                     LEFT JOIN speech_analysis s ON s.response_id = r.response_id
+                    LEFT JOIN behavior_analysis b ON b.response_id = r.response_id
                     WHERE iq.interview_id = %s
                     ORDER BY iq.question_order""", (interview_id,))
     answers = cursor.fetchall()

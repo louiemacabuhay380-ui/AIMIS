@@ -26,6 +26,8 @@
   <div class="rec-indicator"><span class="rec-dot"></span><span id="recLabel">Ready to record</span></div>
 
   <div class="btn-row">
+    <video id="selfView" autoplay muted playsinline width="240"></video>
+    <p id="cameraStatus">Starting camera...</p>
     <button id="recordBtn" type="button" class="btn">Start recording</button>
     <button id="stopBtn" type="button" class="btn btn-danger" disabled>Stop</button>
   </div>
@@ -45,6 +47,124 @@
   <button type="submit" class="btn btn-outline">Cancel interview</button>
 </form>
 
+<script type="module">
+import { FilesetResolver, FaceLandmarker, HandLandmarker }
+  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const video = document.getElementById("selfView");
+const camStatus = document.getElementById("cameraStatus");
+const SAMPLE_MS = 200;   // analyze 5 frames per second
+let face = null, hands = null, timer = null, stats = null, lastWrist = null;
+
+function emptyStats() {
+  return { frames: 0, faceFrames: 0, eyeContactFrames: 0, smileFrames: 0,
+           frownFrames: 0, gestureFrames: 0 };
+}
+function blend(name, cats) {
+  const c = cats.find(c => c.categoryName === name);
+  return c ? c.score : 0;
+}
+function clamp(v) { return Math.max(0, Math.min(100, v)); }
+
+function analyzeFrame() {
+  if (!face || !hands || video.readyState < 2) return;
+  const now = performance.now();
+  stats.frames++;
+
+  // Face: visibility, eye contact, expression
+  const f = face.detectForVideo(video, now);
+  if (f.faceLandmarks.length) {
+    stats.faceFrames++;
+    const lm = f.faceLandmarks[0];
+    const nose = lm[1], left = lm[234], right = lm[454];       // nose tip and both cheeks
+    const width = Math.abs(right.x - left.x) || 1;
+    const facingCamera = Math.abs((nose.x - (left.x + right.x) / 2) / width) < 0.12;
+    const cats = f.faceBlendshapes[0].categories;
+    const lookingAway = Math.max(
+      blend("eyeLookOutLeft", cats), blend("eyeLookOutRight", cats),
+      blend("eyeLookInLeft", cats), blend("eyeLookInRight", cats),
+      blend("eyeLookUpLeft", cats), blend("eyeLookDownLeft", cats)) > 0.6;
+    if (facingCamera && !lookingAway) stats.eyeContactFrames++;
+    if ((blend("mouthSmileLeft", cats) + blend("mouthSmileRight", cats)) / 2 > 0.3) stats.smileFrames++;
+    if ((blend("browDownLeft", cats) + blend("browDownRight", cats)) / 2 > 0.5) stats.frownFrames++;
+  }
+
+  // Hands: gestures
+  const h = hands.detectForVideo(video, now);
+  if (h.landmarks.length) {
+    const wrist = h.landmarks[0][0];
+    if (lastWrist && Math.hypot(wrist.x - lastWrist.x, wrist.y - lastWrist.y) > 0.02) stats.gestureFrames++;
+    lastWrist = wrist;
+  } else {
+    lastWrist = null;
+  }
+}
+
+function computeScores(s) {
+  const smileRatio = s.faceFrames ? s.smileFrames / s.faceFrames : 0;
+  const frownRatio = s.faceFrames ? s.frownFrames / s.faceFrames : 0;
+  const gestureRatio = s.gestureFrames / s.frames;
+
+  let expression = smileRatio >= 0.1 ? 100 : 70 + smileRatio * 300;   // some smiling is ideal
+  expression = clamp(expression - frownRatio * 50);                   // frequent frowning lowers it
+
+  let gesture;
+  if (gestureRatio < 0.05) gesture = 70;                              // little or no gesturing
+  else if (gestureRatio <= 0.5) gesture = 100;                        // natural gesturing
+  else gesture = clamp(100 - (gestureRatio - 0.5) * 120);             // constant movement / fidgeting
+
+  return {
+    frames_analyzed: s.frames,
+    face_visibility_score: +(s.faceFrames / s.frames * 100).toFixed(2),
+    eye_contact_score: +(s.eyeContactFrames / s.frames * 100).toFixed(2),
+    facial_expression_score: +expression.toFixed(2),
+    gesture_score: +gesture.toFixed(2),
+    smile_ratio: +(smileRatio * 100).toFixed(2),
+    gesture_ratio: +(gestureRatio * 100).toFixed(2),
+  };
+}
+
+// The recording script calls start() and stop()
+window.behavior = {
+  ready: false,
+  start() {
+    stats = emptyStats();
+    lastWrist = null;
+    clearInterval(timer);
+    if (this.ready) timer = setInterval(analyzeFrame, SAMPLE_MS);
+  },
+  stop() {
+    clearInterval(timer);
+    timer = null;
+    return (stats && stats.frames > 0) ? computeScores(stats) : null;
+  },
+};
+
+async function init() {
+  try {
+    video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    const fileset = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+    face = await FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath:
+        "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" },
+      runningMode: "VIDEO", numFaces: 1, outputFaceBlendshapes: true });
+    hands = await HandLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath:
+        "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" },
+      runningMode: "VIDEO", numHands: 2 });
+    window.behavior.ready = true;
+    camStatus.textContent = "Camera ready. Try to look at the camera while you answer.";
+  } catch (e) {
+    console.error(e);
+    camStatus.textContent = "The camera couldn't start, so behavior won't be analyzed for this answer.";
+  }
+}
+init();
+</script>
+
+
+
 <script>
 const questionId = "{{ current.interview_question_id }}";
 const MAX_SECONDS = 180;
@@ -56,6 +176,8 @@ const timerEl = document.getElementById("timer");
 const preview = document.getElementById("preview");
 let recorder = null, stream = null, chunks = [], wavBlob = null, timerId = null, seconds = 0;
 let state = "idle";   // idle | recording | preparing | ready | uploading
+let behaviorResult = null;
+
 
 // One place controls every button, so they can never be used at the wrong time
 function setState(newState) {
@@ -95,6 +217,8 @@ recordBtn.onclick = async () => {
     }
   };
   recorder.start();
+    behaviorResult = null;
+  if (window.behavior) window.behavior.start();
   seconds = 0;
   timerEl.textContent = "0:00";
   clearInterval(timerId);
@@ -110,7 +234,8 @@ recordBtn.onclick = async () => {
 stopBtn.onclick = () => {
   if (state !== "recording") return;
   clearInterval(timerId);
-  recorder.stop();                      // onstop above takes over
+  behaviorResult = window.behavior ? window.behavior.stop() : null;
+  recorder.stop();           // onstop above takes over
 };
 
 submitBtn.onclick = async () => {
@@ -120,6 +245,7 @@ submitBtn.onclick = async () => {
   const form = new FormData();
   form.append("interview_question_id", questionId);
   form.append("audio", wavBlob, "answer.wav");
+  if (behaviorResult) form.append("behavior", JSON.stringify(behaviorResult));
   try {
     const res = await fetch(window.location.href, { method: "POST", body: form });
     const data = await res.json().catch(() => ({ ok: true }));

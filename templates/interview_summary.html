@@ -8,6 +8,7 @@
   <p>Answer quality: {{ evaluation.response_quality_score }}
     {% if evaluation.speech_performance_score is not none %}
       | Speech delivery: {{ evaluation.speech_performance_score }}
+        {% if evaluation.behavioral_score is not none %} | Behavior: {{ evaluation.behavioral_score }}{% endif %}
     {% endif %}</p>
 {% elif iv.status == 'completed' %}
   <p>This interview hasn't been evaluated yet.</p>
@@ -41,8 +42,13 @@
 
   {% if a.confidence_score is not none %}
     <p><small><b>Voice:</b> Confidence: {{ a.confidence_score }} | Speech clarity: {{ a.speech_clarity }} |
-      Pitch variation (tone): {{ a.pitch_variation }} semitones | Volume variation: {{ a.volume_variation }} dB |
-      Speaking time: {{ a.speech_ratio }}% | Pauses: total {{ a.total_pause_time }}s, longest {{ a.longest_pause }}s</small></p>
+      {% if a.eye_contact_score is not none %}
+    <p><small><b>Behavior:</b> Eye contact: {{ a.eye_contact_score }} | Face visible: {{ a.face_visibility_score }}% |
+      Expression: {{ a.facial_expression_score }} (smiling {{ a.smile_ratio }}%) |
+      Gestures: {{ a.gesture_score }} (moving {{ a.gesture_ratio }}%)</small></p>
+      {% endif %}
+    Pitch variation (tone): {{ a.pitch_variation }} semitones | Volume variation: {{ a.volume_variation }} dB |
+    Speaking time: {{ a.speech_ratio }}% | Pauses: total {{ a.total_pause_time }}s, longest {{ a.longest_pause }}s</small></p>
   {% endif %}
 {% endfor %}
 
