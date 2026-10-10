@@ -21,7 +21,7 @@ app.secret_key = os.getenv("SECRET_KEY")
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024   # max 25 MB upload
 AUDIO_DIR = os.path.join(app.root_path, "uploads", "audio")
 os.makedirs(AUDIO_DIR, exist_ok=True)
-CONSENT_VERSION = "v1.0"
+CONSENT_VERSION = "v1.1"
 _audio_key = os.getenv("AUDIO_ENCRYPTION_KEY")
 if not _audio_key:
     raise RuntimeError("AUDIO_ENCRYPTION_KEY is missing from .env")
@@ -87,16 +87,29 @@ def evaluate_interview(interview_id):
                       JOIN responses r ON r.response_id = sa.response_id
                       JOIN interview_questions iq ON iq.interview_question_id = r.interview_question_id
                       WHERE iq.interview_id = %s""", (interview_id,))
-    speech = cursor.fetchone()["speech_score"]
-    if speech is not None:
-        speech = round(float(speech), 2)
-        overall = round(quality * 0.7 + speech * 0.3, 2)   # adjust weights to match your paper
-    else:
-        overall = quality   # older typed-answer interviews have no speech data
+        speech = cursor.fetchone()["speech_score"]
+    speech = round(float(speech), 2) if speech is not None else None
+
+    cursor.execute("""SELECT AVG((ba.eye_contact_score + ba.facial_expression_score
+                                  + ba.gesture_score) / 3) AS behavior_score
+                      FROM behavior_analysis ba
+                      JOIN responses r ON r.response_id = ba.response_id
+                      JOIN interview_questions iq ON iq.interview_question_id = r.interview_question_id
+                      WHERE iq.interview_id = %s""", (interview_id,))
+    behavior = cursor.fetchone()["behavior_score"]
+    behavior = round(float(behavior), 2) if behavior is not None else None
+
+    # Weights: answer content 60%, speech delivery 25%, behavior 15%.
+    # Parts that are missing (e.g. older interviews without camera data) are left out.
+    parts = [(quality, 0.60), (speech, 0.25), (behavior, 0.15)]
+    available = [(value, weight) for value, weight in parts if value is not None]
+    overall = round(sum(v * w for v, w in available) / sum(w for _, w in available), 2)
 
     cursor.execute("""INSERT INTO evaluations
-                      (interview_id, response_quality_score, speech_performance_score, overall_score)
-                      VALUES (%s, %s, %s, %s)""", (interview_id, quality, speech, overall))
+                    (interview_id, response_quality_score, speech_performance_score,
+                    behavioral_score, overall_score)
+                    VALUES (%s, %s, %s, %s, %s)""",
+                   (interview_id, quality, speech, behavior, overall))
     cursor.execute("""INSERT INTO feedback (interview_id, strengths, areas_to_improve, recommendations)
                       VALUES (%s, %s, %s, %s)""",
                    (interview_id, result["strengths"], result["areas_to_improve"], result["recommendations"]))
@@ -411,7 +424,6 @@ def interview(interview_id):
                                (response_id, *values, int(b.get("frames_analyzed", 0))))
             except (ValueError, TypeError, AttributeError):
                 pass   # invalid data from the browser: skip behavior for this answer
-
         conn.commit()
         conn.close()
         return jsonify(ok=True)
