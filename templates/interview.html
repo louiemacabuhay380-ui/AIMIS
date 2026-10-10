@@ -2,59 +2,118 @@
 {% block title %}Interview · AIMIS{% endblock %}
 
 {% block content %}
-<div class="page-head">
+<div class="page-head iv-head">
   <div>
     <h1>{{ iv.category }} Interview</h1>
-    <p>{{ iv.difficulty }}</p>
+    <p>{{ iv.difficulty }} · <span id="progressText">Question {{ current.question_order }} of {{ iv.number_of_questions }}</span></p>
   </div>
-  <span class="progress-text">Question {{ current.question_order }} of {{ iv.number_of_questions }}</span>
+  <label class="voice-switch" title="When on, the interviewer reads each question out loud">
+    <input type="checkbox" id="voiceMode" checked>
+    <span class="switch-track">
+      <svg class="switch-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+           stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+      </svg>
+      <span class="switch-knob"></span>
+    </span>
+    <span class="switch-label">Voice mode</span>
+  </label>
 </div>
 
-<div class="steps" aria-hidden="true">
+<div class="steps" id="steps" aria-hidden="true">
   {% for n in range(1, iv.number_of_questions + 1) %}
     <span class="{% if n < current.question_order %}done{% elif n == current.question_order %}now{% endif %}"></span>
   {% endfor %}
 </div>
 
-<div class="card question-card">
-  <p class="question-label">Question {{ current.question_order }}</p>
-  <p class="question-text">{{ current.question_text }}</p>
-</div>
+<div class="iv-layout" id="interviewArea"
+     data-interview-question-id="{{ current.interview_question_id }}"
+     data-question="{{ current.question_text }}"
+     data-number="{{ current.question_order }}"
+     data-total="{{ iv.number_of_questions }}"
+     data-category="{{ iv.category }}">
 
-<div class="card recorder" id="recorderCard">
-  <div class="rec-timer" id="timer">0:00</div>
-  <div class="rec-indicator"><span class="rec-dot"></span><span id="recLabel">Ready to record</span></div>
+  <!-- ===== Left column: robot interviewer (top) and the user's camera (bottom) ===== -->
+  <div class="iv-media">
+    <div class="iv-box ai-box" id="interviewer">
+      <span class="rec-badge" id="recBadge"><span class="rec-dot"></span><span id="recLabel">Ready</span></span>
 
-  <div class="btn-row">
-    <video id="selfView" autoplay muted playsinline width="240"></video>
-    <p id="cameraStatus">Starting camera...</p>
-    <button id="recordBtn" type="button" class="btn">Start recording</button>
-    <button id="stopBtn" type="button" class="btn btn-danger" disabled>Stop</button>
+      <svg class="robot" viewBox="0 0 160 170" aria-hidden="true">
+        <!-- antenna -->
+        <line x1="80" y1="22" x2="80" y2="40" class="rb-antenna"/>
+        <circle cx="80" cy="17" r="7" class="rb-light"/>
+        <!-- ears -->
+        <rect x="17" y="68" width="14" height="30" rx="6" class="rb-ear"/>
+        <rect x="129" y="68" width="14" height="30" rx="6" class="rb-ear"/>
+        <!-- head -->
+        <rect x="28" y="38" width="104" height="88" rx="30" class="rb-head"/>
+        <!-- face screen -->
+        <rect x="41" y="51" width="78" height="62" rx="20" class="rb-screen"/>
+        <!-- eyes -->
+        <g class="rb-eyes">
+          <ellipse cx="63" cy="76" rx="7" ry="8.5" class="rb-eye"/>
+          <ellipse cx="97" cy="76" rx="7" ry="8.5" class="rb-eye"/>
+          <circle cx="65.5" cy="72.5" r="2.2" class="rb-shine"/>
+          <circle cx="99.5" cy="72.5" r="2.2" class="rb-shine"/>
+        </g>
+        <!-- cheeks -->
+        <ellipse cx="52" cy="93" rx="5" ry="3.2" class="rb-cheek"/>
+        <ellipse cx="108" cy="93" rx="5" ry="3.2" class="rb-cheek"/>
+        <!-- mouth: its size changes with each sound while speaking (lip sync) -->
+        <ellipse id="robotMouth" cx="80" cy="97" rx="9" ry="2" class="rb-mouth"/>
+        <!-- body -->
+        <rect x="52" y="128" width="56" height="34" rx="14" class="rb-body"/>
+        <circle cx="80" cy="145" r="6" class="rb-chest"/>
+      </svg>
+
+      <p class="ai-name">AIMIS Bot</p>
+      <p class="live-tip" id="liveTip" aria-live="polite">Hi! Press Start interview when you're ready.</p>
+      <span class="iv-timer" id="timer">00:00</span>
+    </div>
+
+    <div class="iv-box cam-box-live">
+      <video id="selfView" autoplay muted playsinline></video>
+      <span class="cam-label">You</span>
+    </div>
   </div>
 
-  <audio id="preview" controls hidden></audio>
-  <p id="status" class="rec-status">Click "Start recording" when you're ready to answer. You have up to 3 minutes.</p>
+  <!-- ===== Right column: the whole interview as one conversation ===== -->
+  <div class="iv-chat card">
+    <div class="chat-log" id="chatLog">
+      <div class="chat-start" id="startHint">
+        <p><b>{{ iv.number_of_questions }} question{{ 's' if iv.number_of_questions != 1 }} · {{ iv.category }}</b></p>
+        <p class="muted">Press <b>{{ 'Start interview' if current.question_order == 1 else 'Continue interview' }}</b> when you're ready.
+          The interviewer asks each question out loud, recording starts automatically,
+          and the next question follows after you finish your answer.</p>
+      </div>
+    </div>
 
-  <div class="btn-row">
-    <button id="submitBtn" type="button" class="btn" hidden>Submit answer</button>
+    <div class="chat-actions">
+      <p id="status" class="rec-status">You have up to 3 minutes for each answer.</p>
+      <div class="btn-row">
+        <button id="startBtn" type="button" class="btn btn-lg">{{ 'Start interview' if current.question_order == 1 else 'Continue interview' }}</button>
+        <button id="skipBtn" type="button" class="btn btn-lg btn-outline" hidden>Start answering now</button>
+        <button id="restartBtn" type="button" class="btn btn-lg btn-outline" hidden>Restart answer</button>
+        <button id="finishBtn" type="button" class="btn btn-lg" hidden>Finish answer</button>
+        <button id="retryBtn" type="button" class="btn btn-lg" hidden>Try saving again</button>
+      </div>
+    </div>
   </div>
 </div>
-
 
 <form method="POST" action="{{ url_for('cancel_interview', interview_id=iv.interview_id) }}"
       style="margin-top:18px;"
       onsubmit="return confirm('Cancel this interview? Any answers you recorded for it will be deleted.');">
-  <button type="submit" class="btn btn-outline">Cancel interview</button>
+  <button type="submit" class="btn btn-outline btn-sm">Cancel interview</button>
 </form>
 
+<!-- ======================= Behavioral analysis (MediaPipe, runs in the browser) ======================= -->
 <script type="module">
-import { FilesetResolver, FaceLandmarker, HandLandmarker }
-  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
-
+const MEDIAPIPE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 const video = document.getElementById("selfView");
-const camStatus = document.getElementById("cameraStatus");
 const SAMPLE_MS = 200;   // analyze 5 frames per second
 let face = null, hands = null, timer = null, stats = null, lastWrist = null;
+let recent = [];         // the last 2 seconds of frames, used for live tips
 
 function emptyStats() {
   return { frames: 0, faceFrames: 0, eyeContactFrames: 0, smileFrames: 0,
@@ -70,11 +129,13 @@ function analyzeFrame() {
   if (!face || !hands || video.readyState < 2) return;
   const now = performance.now();
   stats.frames++;
+  const frame = { face: false, eye: false, smile: false };
 
   // Face: visibility, eye contact, expression
   const f = face.detectForVideo(video, now);
   if (f.faceLandmarks.length) {
     stats.faceFrames++;
+    frame.face = true;
     const lm = f.faceLandmarks[0];
     const nose = lm[1], left = lm[234], right = lm[454];       // nose tip and both cheeks
     const width = Math.abs(right.x - left.x) || 1;
@@ -84,8 +145,8 @@ function analyzeFrame() {
       blend("eyeLookOutLeft", cats), blend("eyeLookOutRight", cats),
       blend("eyeLookInLeft", cats), blend("eyeLookInRight", cats),
       blend("eyeLookUpLeft", cats), blend("eyeLookDownLeft", cats)) > 0.6;
-    if (facingCamera && !lookingAway) stats.eyeContactFrames++;
-    if ((blend("mouthSmileLeft", cats) + blend("mouthSmileRight", cats)) / 2 > 0.3) stats.smileFrames++;
+    if (facingCamera && !lookingAway) { stats.eyeContactFrames++; frame.eye = true; }
+    if ((blend("mouthSmileLeft", cats) + blend("mouthSmileRight", cats)) / 2 > 0.3) { stats.smileFrames++; frame.smile = true; }
     if ((blend("browDownLeft", cats) + blend("browDownRight", cats)) / 2 > 0.5) stats.frownFrames++;
   }
 
@@ -98,6 +159,9 @@ function analyzeFrame() {
   } else {
     lastWrist = null;
   }
+
+  recent.push(frame);
+  if (recent.length > 10) recent.shift();
 }
 
 function computeScores(s) {
@@ -124,27 +188,42 @@ function computeScores(s) {
   };
 }
 
-// The recording script calls start() and stop()
+// The session script below calls start(), stop() and live()
 window.behavior = {
   ready: false,
+  active: false,          // remembers that recording started, even before the models were ready
   start() {
     stats = emptyStats();
+    recent = [];
     lastWrist = null;
     clearInterval(timer);
+    this.active = true;
     if (this.ready) timer = setInterval(analyzeFrame, SAMPLE_MS);
   },
   stop() {
+    this.active = false;
     clearInterval(timer);
     timer = null;
     return (stats && stats.frames > 0) ? computeScores(stats) : null;
+  },
+  live() {                // what the camera saw in the last 2 seconds
+    if (!recent.length) return null;
+    const share = key => recent.filter(f => f[key]).length / recent.length;
+    return { face: share("face"), eye: share("eye"), smile: share("smile"),
+             smiledAtAll: stats ? stats.smileFrames > 0 : false };
   },
 };
 
 async function init() {
   try {
     video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-    const fileset = await FilesetResolver.forVisionTasks(
-      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+  } catch (e) {
+    console.error("Camera blocked:", e);
+    return;
+  }
+  try {
+    const { FilesetResolver, FaceLandmarker, HandLandmarker } = await import(MEDIAPIPE);
+    const fileset = await FilesetResolver.forVisionTasks(MEDIAPIPE + "/wasm");
     face = await FaceLandmarker.createFromOptions(fileset, {
       baseOptions: { modelAssetPath:
         "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" },
@@ -154,117 +233,415 @@ async function init() {
         "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" },
       runningMode: "VIDEO", numHands: 2 });
     window.behavior.ready = true;
-    camStatus.textContent = "Camera ready. Try to look at the camera while you answer.";
+    if (window.behavior.active) timer = setInterval(analyzeFrame, SAMPLE_MS);   // recording already started
   } catch (e) {
-    console.error(e);
-    camStatus.textContent = "The camera couldn't start, so behavior won't be analyzed for this answer.";
+    console.error("Face analysis couldn't load:", e);   // the interview still works without behavior scores
   }
 }
 init();
 </script>
 
+<!-- ======================= The interview session: robot voice, lip sync, recording ======================= -->
 <script>
-const questionId = "{{ current.interview_question_id }}";
 const MAX_SECONDS = 180;
-const recordBtn = document.getElementById("recordBtn");
-const stopBtn = document.getElementById("stopBtn");
-const submitBtn = document.getElementById("submitBtn");
+const area = document.getElementById("interviewArea");
+const robotBox = document.getElementById("interviewer");
+const mouth = document.getElementById("robotMouth");
+const startBtn = document.getElementById("startBtn");
+const skipBtn = document.getElementById("skipBtn");
+const restartBtn = document.getElementById("restartBtn");
+const finishBtn = document.getElementById("finishBtn");
+const retryBtn = document.getElementById("retryBtn");
 const statusEl = document.getElementById("status");
 const timerEl = document.getElementById("timer");
-const preview = document.getElementById("preview");
-const interviewArea = document.getElementById("interviewArea");
 const recLabel = document.getElementById("recLabel");
-let recorder = null, stream = null, chunks = [], wavBlob = null, timerId = null, seconds = 0;
-let state = "idle";   // idle | recording | preparing | ready | uploading
-let behaviorResult = null;
+const liveTip = document.getElementById("liveTip");
+const chatLog = document.getElementById("chatLog");
+const voiceMode = document.getElementById("voiceMode");
+const progressText = document.getElementById("progressText");
+const stepBars = document.querySelectorAll("#steps span");
 
-// One place controls every button, so they can never be used at the wrong time
-function setState(newState) {
-  state = newState;
-  recordBtn.disabled = !(state === "idle" || state === "ready");
-  stopBtn.disabled = state !== "recording";
-  submitBtn.disabled = state !== "ready";
-  submitBtn.hidden = !(state === "ready" || state === "uploading");
-  preview.hidden = !(state === "ready" || state === "uploading");
-  recordBtn.textContent = (state === "ready") ? "Record again" : "Start recording";
-  // Visual state: red dot + label while recording
-  interviewArea.classList.toggle("recording", state === "recording");
-  recLabel.textContent = {
-    idle: "Ready to record", recording: "Recording", preparing: "Preparing...",
-    ready: "Recording finished", uploading: "Saving..."
-  }[state];
+// The question currently being asked (updated as the session continues)
+let current = {
+  id: Number(area.dataset.interviewQuestionId),
+  number: Number(area.dataset.number),
+  text: area.dataset.question,
+};
+const total = Number(area.dataset.total);
+const resumed = current.number > 1;     // the user left and came back mid-interview
+
+let micStream = null, recorder = null, chunks = [], timerId = null, seconds = 0;
+let state = "idle";   // idle | asking | recording | saving | error | finished
+let behaviorResult = null, pendingUpload = null, discardTake = false;
+let answerText = null;   // the <p> in the current answer bubble
+
+// ---------- Chat bubbles ----------
+function addBubble(who, label, html) {
+  const div = document.createElement("div");
+  div.className = "bubble " + who;
+  div.innerHTML = `<span class="bubble-who">${label}</span>` + html;
+  chatLog.appendChild(div);
+  chatLog.scrollTop = chatLog.scrollHeight;
+  return div;
+}
+function escapeHtml(t) {
+  const d = document.createElement("div"); d.textContent = t; return d.innerHTML;
 }
 
-recordBtn.onclick = async () => {
-  if (state !== "idle" && state !== "ready") return;
+// ---------- Robot voice with lip sync ----------
+const canSpeak = "speechSynthesis" in window;
+let voice = null;
+try { voiceMode.checked = localStorage.getItem("aimis-voice-mode") !== "off"; } catch (e) {}
+if (!canSpeak) { voiceMode.checked = false; voiceMode.disabled = true; }
+voiceMode.addEventListener("change", () => {
+  try { localStorage.setItem("aimis-voice-mode", voiceMode.checked ? "on" : "off"); } catch (e) {}
+  if (!voiceMode.checked) stopSpeaking();
+});
+function pickVoice() {
+  const voices = speechSynthesis.getVoices();
+  voice = voices.find(v => /^en[-_]US/i.test(v.lang) && /Google|Natural|Online/i.test(v.name))
+       || voices.find(v => /^en/i.test(v.lang)) || null;
+}
+if (canSpeak) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+
+// Mouth shapes (width, height) for groups of sounds
+const MOUTH = {
+  rest:   [9, 2],     // closed / smiling line
+  closed: [8, 1.2],   // m, b, p
+  a:      [9, 7.5],   // "ah"
+  e:      [11, 4],    // "ee", "eh"
+  o:      [6.5, 7.5], // "oh"
+  u:      [4.5, 5],   // "oo", w
+  f:      [9, 2.6],   // f, v
+  mid:    [8, 4],     // most other consonants
+};
+function shapeFor(ch) {
+  ch = (ch || " ").toLowerCase();
+  if ("a".includes(ch)) return "a";
+  if ("ei".includes(ch) || ch === "y") return "e";
+  if (ch === "o") return "o";
+  if ("uwq".includes(ch)) return "u";
+  if ("mbp".includes(ch)) return "closed";
+  if ("fv".includes(ch)) return "f";
+  if (/[a-z]/.test(ch)) return "mid";
+  return "rest";                         // spaces and punctuation close the mouth
+}
+function setMouth(shape) {
+  const [rx, ry] = MOUTH[shape];
+  mouth.setAttribute("rx", rx);
+  mouth.setAttribute("ry", ry);
+}
+
+// Lip sync: the browser reports each word as it is spoken (onboundary). Between those reports,
+// the mouth steps through the word's letters. If the voice never reports words, the position
+// is estimated from the elapsed time instead.
+let lip = { text: "", pos: 0, start: 0, lastBoundary: 0, timer: null };
+function startLip(text) {
+  lip = { text, pos: 0, start: performance.now(), lastBoundary: 0, timer: null };
+  lip.timer = setInterval(() => {
+    const now = performance.now();
+    if (now - lip.lastBoundary > 700) {
+      lip.pos = Math.max(lip.pos + 1, Math.floor((now - lip.start) / 1000 * 13));   // about 13 letters a second
+    } else {
+      lip.pos += 1;
+    }
+    setMouth(shapeFor(lip.text[lip.pos]));
+  }, 80);
+}
+function stopLip() {
+  clearInterval(lip.timer);
+  setMouth("rest");
+}
+
+// Speaks text with lip sync, then calls done(). A safety timer keeps the session going
+// even if the browser never reports that speaking finished.
+function say(text, done) {
+  if (!canSpeak || !voiceMode.checked) { done && done(); return; }
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    stopLip();
+    robotBox.classList.remove("speaking");
+    done && done();
+  };
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  if (voice) u.voice = voice;
+  u.rate = 0.95;
+  u.pitch = 1.15;                        // a slightly brighter, friendlier robot voice
+  u.onstart = () => { robotBox.classList.add("speaking"); startLip(text); };
+  u.onboundary = e => { if (e.name === "word" || e.name === undefined) { lip.pos = e.charIndex; lip.lastBoundary = performance.now(); } };
+  u.onend = u.onerror = finish;
+  speechSynthesis.speak(u);
+  setTimeout(finish, 3000 + text.split(/\s+/).length * 480);
+}
+function stopSpeaking() {
+  if (canSpeak) speechSynthesis.cancel();
+  stopLip();
+  robotBox.classList.remove("speaking");
+}
+
+// ---------- Live transcript of the user's answer (display only) ----------
+// The saved transcript still comes from the server after the interview; this only shows words while speaking.
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, finalText = "", fillerCount = 0;
+const FILLERS = /\b(um+|uh+|erm|ah+|ano|parang|kasi|yung)\b/gi;
+
+function startTranscript() {
+  finalText = ""; fillerCount = 0;
+  if (!SpeechRec) { answerText.textContent = "Recording your answer..."; return; }
+  rec = new SpeechRec();
+  rec.lang = "en-US";
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.onresult = e => {
+    let interim = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const t = e.results[i][0].transcript;
+      if (e.results[i].isFinal) { finalText += t + " "; fillerCount += (t.match(FILLERS) || []).length; }
+      else interim += t;
+    }
+    answerText.textContent = (finalText + interim).trim() || "Listening...";
+    chatLog.scrollTop = chatLog.scrollHeight;
+  };
+  rec.onend = () => { if (state === "recording") { try { rec.start(); } catch (e) {} } };   // keep listening
+  try { rec.start(); } catch (e) {}
+}
+function stopTranscript() {
+  if (rec) { rec.onend = null; try { rec.stop(); } catch (e) {} rec = null; }
+}
+
+// ---------- Microphone loudness (used only for the live tips) ----------
+let audioCtx = null, analyser = null, levelData = null, levelRaf = null;
+let quietMs = 0, silentMs = 0, lastTick = 0;
+function startMeter(s) {
+  audioCtx = new AudioContext();
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 512;
+  audioCtx.createMediaStreamSource(s).connect(analyser);
+  levelData = new Uint8Array(analyser.fftSize);
+  quietMs = silentMs = 0;
+  lastTick = performance.now();
+  (function tick() {
+    const now = performance.now();
+    analyser.getByteTimeDomainData(levelData);
+    let peak = 0;
+    for (const v of levelData) peak = Math.max(peak, Math.abs(v - 128));
+    const level = Math.min(100, (peak / 128) * 200);
+    const dt = now - lastTick; lastTick = now;
+    if (level < 4) silentMs += dt; else silentMs = 0;
+    if (level >= 4 && level < 12) quietMs += dt; else if (level >= 12) quietMs = Math.max(0, quietMs - dt);
+    levelRaf = requestAnimationFrame(tick);
+  })();
+}
+function stopMeter() {
+  cancelAnimationFrame(levelRaf);
+  if (audioCtx) audioCtx.close();
+  audioCtx = null;
+}
+
+// Live tips are shown, not spoken, so they never end up in the recording
+function currentTip() {
+  const b = window.behavior && window.behavior.live ? window.behavior.live() : null;
+  if (b && b.face < 0.3) return ["I can't see your face. Move back into the camera view.", "warn"];
+  if (silentMs > 5000) return ["Take your time. Continue when you're ready.", "info"];
+  if (quietMs > 3000) return ["Speak a little louder so your answer is clear.", "warn"];
+  if (b && b.eye < 0.4) return ["Try to look at the camera, as if it's my eyes.", "warn"];
+  if (fillerCount >= 3) return ["Try pausing briefly instead of saying \"um\" or \"ano\".", "warn"];
+  if (b && seconds > 15 && !b.smiledAtAll) return ["A natural smile helps you look confident.", "info"];
+  if (seconds > 150) return ["You're close to 3 minutes. Start wrapping up.", "info"];
+  return ["Good. Keep going.", "good"];
+}
+function setTip(text, kind) {
+  liveTip.textContent = text;
+  liveTip.className = "live-tip" + (kind ? " tip-" + kind : "");
+}
+
+// ---------- Buttons and progress ----------
+function setState(newState) {
+  state = newState;
+  startBtn.hidden = state !== "idle";
+  skipBtn.hidden = state !== "asking";
+  restartBtn.hidden = state !== "recording";
+  finishBtn.hidden = state !== "recording";
+  retryBtn.hidden = state !== "error";
+  area.classList.toggle("recording", state === "recording");
+  recLabel.textContent = { idle: "Ready", asking: "Asking", recording: "Rec", saving: "Saving",
+                           error: "Paused", finished: "Done" }[state];
+}
+function updateProgress() {
+  progressText.textContent = `Question ${current.number} of ${total}`;
+  stepBars.forEach((bar, i) => {
+    bar.className = (i + 1 < current.number) ? "done" : (i + 1 === current.number ? "now" : "");
+  });
+}
+function fmt(s) { return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
+
+// ---------- The session ----------
+// 1. Start: get the microphone once for the whole interview, then ask the first question.
+startBtn.onclick = async () => {
+  if (state !== "idle") return;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e) {
     statusEl.textContent = "Microphone access was blocked. Allow it in your browser, then try again.";
     return;
   }
+  document.getElementById("startHint").remove();
+  let intro;
+  if (resumed) intro = `Welcome back! Let's continue with question ${current.number}.`;
+  else intro = `Hi, I'm AIMIS Bot. Welcome to your ${area.dataset.category} mock interview. I'll ask you ${total} question${total > 1 ? "s" : ""}. Let's begin.`;
+  askQuestion(intro);
+};
+
+// 2. Ask: show the question in the chat and read it aloud, then start recording.
+function askQuestion(lead) {
+  updateProgress();
+  seconds = 0;
+  timerEl.textContent = "00:00";
+  const label = `Interviewer · Question ${current.number} of ${total}`;
+  addBubble("ai", label, (lead ? `<p>${escapeHtml(lead)}</p>` : "") +
+                         `<p class="bubble-question">${escapeHtml(current.text)}</p>`);
+  if (canSpeak && voiceMode.checked) {
+    setState("asking");
+    setTip("Listen to the question...", "info");
+    statusEl.textContent = "Listening to the question. Recording starts when it finishes.";
+    say((lead ? lead + " " : "") + current.text, beginRecording);
+  } else {
+    beginRecording();
+  }
+}
+skipBtn.onclick = () => { if (state === "asking") beginRecording(); };
+
+// 3. Record the answer
+function beginRecording() {
+  if (state === "recording") return;
+  stopSpeaking();                         // never record the robot's voice
   chunks = [];
-  wavBlob = null;                       // forget any previous take
-  recorder = new MediaRecorder(stream);
+  discardTake = false;
+  if (!answerText) {
+    const bubble = addBubble("user", "Your answer", `<p class="transcript-live">Listening...</p>`);
+    answerText = bubble.querySelector("p");
+  } else {
+    answerText.textContent = "Listening...";
+  }
+  recorder = new MediaRecorder(micStream);
   recorder.ondataavailable = e => chunks.push(e.data);
-  recorder.onstop = async () => {
-    stream.getTracks().forEach(t => t.stop());
-    setState("preparing");
-    statusEl.textContent = "Preparing your recording...";
-    try {
-      wavBlob = await toWav(new Blob(chunks, { type: recorder.mimeType }));
-      preview.src = URL.createObjectURL(wavBlob);
-      setState("ready");
-      statusEl.textContent = "Listen back if you like, then submit your answer.";
-    } catch (e) {
-      setState("idle");
-      statusEl.textContent = "Something went wrong with that recording. Please record again.";
-    }
-  };
+  recorder.onstop = onRecordingStopped;
   recorder.start();
   behaviorResult = null;
   if (window.behavior) window.behavior.start();
+  startMeter(micStream);
+  startTranscript();
   seconds = 0;
-  timerEl.textContent = "0:00";
+  timerEl.textContent = "00:00";
   clearInterval(timerId);
   timerId = setInterval(() => {
     seconds++;
-    timerEl.textContent = Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
-    if (seconds >= MAX_SECONDS) stopBtn.click();
+    timerEl.textContent = fmt(seconds);
+    if (seconds % 2 === 0) setTip(...currentTip());
+    if (seconds >= MAX_SECONDS) finishBtn.click();
   }, 1000);
   setState("recording");
-  statusEl.textContent = "Recording... speak your answer.";
-};
+  setTip("I'm listening. Go ahead.", "good");
+  statusEl.textContent = "Recording. Press Finish answer when you're done.";
+}
 
-stopBtn.onclick = () => {
-  if (state !== "recording") return;
+function stopRecordingParts() {
   clearInterval(timerId);
-  behaviorResult = window.behavior ? window.behavior.stop() : null;
-  recorder.stop();                      // onstop above takes over
+  stopTranscript();
+  stopMeter();
+}
+
+// Restart: throw away this take and record again
+restartBtn.onclick = () => {
+  if (state !== "recording") return;
+  discardTake = true;
+  stopRecordingParts();
+  if (window.behavior) window.behavior.stop();
+  recorder.stop();
 };
 
-submitBtn.onclick = async () => {
-  if (state !== "ready" || !wavBlob) return;   // ignore clicks at the wrong time
-  setState("uploading");
+// 4. Finish: save this answer, then the robot asks the next question
+finishBtn.onclick = () => {
+  if (state !== "recording") return;
+  stopRecordingParts();
+  behaviorResult = window.behavior ? window.behavior.stop() : null;
+  setState("saving");
+  setTip("Thanks! Saving your answer...", "good");
   statusEl.textContent = "Saving your answer...";
-  const form = new FormData();
-  form.append("interview_question_id", questionId);
-  form.append("audio", wavBlob, "answer.wav");
-  if (behaviorResult) form.append("behavior", JSON.stringify(behaviorResult));
-  try {
-    const res = await fetch(window.location.href, { method: "POST", body: form });
-    const data = await res.json().catch(() => ({ ok: true }));
-    if (data.ok || res.status === 409) {
-      statusEl.textContent = "Saved! Loading the next question...";
-      window.location.reload();
-      return;
-    }
-    statusEl.textContent = data.error;
-  } catch (e) {
-    statusEl.textContent = "Upload failed. Check your connection and submit again.";
-  }
-  setState("ready");                    // let them retry or record again
+  recorder.stop();
 };
+
+async function onRecordingStopped() {
+  if (discardTake) {                      // restart was pressed
+    state = "asking";                     // lets beginRecording run again
+    beginRecording();
+    return;
+  }
+  if (!finalText.trim()) answerText.textContent = `Answer recorded (${fmt(seconds)}).`;
+  try {
+    const wav = await toWav(new Blob(chunks, { type: recorder.mimeType }));
+    if (seconds < 2) throw new Error("too short");
+    pendingUpload = { wav, behavior: behaviorResult, id: current.id };
+    upload();
+  } catch (e) {
+    answerText.textContent = "That recording was too short. Let's try again.";
+    answerText = null;
+    state = "asking";
+    beginRecording();
+  }
+}
+
+async function upload() {
+  setState("saving");
+  const form = new FormData();
+  form.append("interview_question_id", pendingUpload.id);
+  form.append("audio", pendingUpload.wav, "answer.wav");
+  if (pendingUpload.behavior) form.append("behavior", JSON.stringify(pendingUpload.behavior));
+  let data;
+  try {
+    const res = await fetch(window.location.pathname, { method: "POST", body: form });
+    data = await res.json().catch(() => ({ ok: false, error: "The server had a problem saving your answer." }));
+    if (res.status === 409) { window.location.reload(); return; }   // already saved: reload to sync
+  } catch (e) {
+    data = { ok: false, error: "Upload failed. Check your connection." };
+  }
+  if (!data.ok) {
+    setState("error");
+    setTip("I couldn't save that answer. Let's try again.", "warn");
+    statusEl.textContent = (data.error || "Saving failed.") + " Your answer is still here.";
+    return;
+  }
+  pendingUpload = null;
+  answerText = null;                      // the next answer gets its own bubble
+
+  if (data.done) {                        // 5. That was the last question
+    finishSession(data.next_url);
+    return;
+  }
+  current = { id: data.next.interview_question_id, number: data.next.question_order, text: data.next.question_text };
+  askQuestion(current.number === total ? "Thank you. Here's your last question." : "Thank you. Here's the next question.");
+}
+retryBtn.onclick = () => { if (state === "error" && pendingUpload) upload(); };
+
+function finishSession(nextUrl) {
+  stepBars.forEach(bar => bar.className = "done");
+  setState("finished");
+  if (micStream) micStream.getTracks().forEach(t => t.stop());
+  const bye = "That's the end of the interview. Thank you! I'll now prepare your results.";
+  addBubble("ai", "Interviewer", `<p>${bye}</p>`);
+  setTip("Great job! Preparing your results...", "good");
+  statusEl.textContent = "All answers saved. Preparing your results...";
+  say(bye, () => { window.location.href = nextUrl; });
+  if (!canSpeak || !voiceMode.checked) setTimeout(() => { window.location.href = nextUrl; }, 1500);
+}
+
+// Warn before leaving in the middle of an answer
+window.addEventListener("beforeunload", e => {
+  if (state === "recording" || state === "saving") { e.preventDefault(); e.returnValue = ""; }
+});
 
 // Convert the browser recording into a mono 16-bit WAV file that Gemini can read
 async function toWav(blob) {

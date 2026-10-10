@@ -1,61 +1,26 @@
 {% extends "base.html" %}
-{% block title %}Create an account · AIMIS{% endblock %}
-{% block body_class %}auth-page{% endblock %}
+{% block title %}Register · AIMIS{% endblock %}
 
 {% block content %}
-<div class="auth-card">
-  <img class="auth-logo" src="{{ url_for('static', filename='img/aimis-logo.png') }}" alt="AIMIS">
-  <p class="auth-tagline">AI Mock Interview System</p>
-  <h1>Create an Account</h1>
-  <p class="auth-sub">Sign up to start practicing interviews</p>
+<div class="auth-card card">
+  <img class="auth-logo" src="{{ url_for('static', filename='img/aimis-logo.png') }}" alt=""
+       onerror="this.style.display='none'">
+  <h1>Create an account</h1>
+  <p class="muted">Practice soft-skills interviews with AI feedback.</p>
 
-  <form method="POST" action="{{ url_for('register') }}" id="register-form">
-    <div class="field">
-      <label for="full_name">Full name</label>
-      <input id="full_name" name="full_name" type="text" autocomplete="name" required>
-    </div>
-
-    <div class="field">
-      <label for="email">Email</label>
-      <input id="email" name="email" type="email" autocomplete="email" required>
-    </div>
-
-    <div class="field">
-      <label for="password">Password</label>
-      <input id="password" name="password" type="password" minlength="8" autocomplete="new-password" required>
-      <p class="field-hint">At least 8 characters</p>
-    </div>
-
-    <div class="field">
-      <label for="confirm_password">Confirm password</label>
-      <input id="confirm_password" type="password" minlength="8" autocomplete="new-password" required>
-    </div>
-
-    <label class="field-check">
-      <input type="checkbox" required>
-      <span>I agree to the Terms and Privacy Policy</span>
+  <form method="POST" class="form">
+    <label>Full name
+      <input name="full_name" placeholder="Juan Dela Cruz" required>
     </label>
-
-    <button type="submit" class="btn btn-block">Create Account</button>
+    <label>Email
+      <input name="email" type="email" placeholder="you@example.com" required>
+    </label>
+    <label>Password
+      <input name="password" type="password" placeholder="At least 8 characters" minlength="8" required>
+    </label>
+    <button type="submit" class="btn btn-block">Register</button>
   </form>
 
-  <div class="divider"><span>or</span></div>
-
-  <p class="auth-footer">
-    Already have an account? <a href="{{ url_for('login') }}" class="link">Sign in</a>
-  </p>
+  <p class="muted auth-switch">Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-  // Check that both passwords match before sending the form
-  const pw = document.getElementById("password");
-  const confirmPw = document.getElementById("confirm_password");
-  function checkMatch() {
-    confirmPw.setCustomValidity(pw.value === confirmPw.value ? "" : "Passwords don't match.");
-  }
-  pw.addEventListener("input", checkMatch);
-  confirmPw.addEventListener("input", checkMatch);
-</script>
 {% endblock %}

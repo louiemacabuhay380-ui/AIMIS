@@ -1,122 +1,148 @@
 {% extends "base.html" %}
 {% block title %}Dashboard · AIMIS{% endblock %}
 
-
 {% block content %}
-<section class="welcome">
-  <h1>Welcome, {{ session.full_name }}</h1>
-  <p class="muted">Practice your interview skills through AI-powered mock interviews</p>
-</section>
+{# ---- Welcome banner ---- #}
+<div class="card hero">
+  <div>
+    <h1>Hi, {{ (session.full_name or 'there').split(' ')[0] }}!</h1>
+    <p>Ready to practice? Each mock interview takes about 5–10 minutes.</p>
+  </div>
+  <a href="{{ url_for('start_interview') }}" class="btn btn-lg">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+    Start new interview
+  </a>
+</div>
 
-<a href="{{ url_for('start_interview') }}" class="btn btn-block btn-lg">
-  <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
-  Start New Interview
-</a>
-
-<section class="stats">
-  <div class="stat">
+{# ---- Stat tiles ---- #}
+<div class="grid-3" style="margin-top:16px">
+  <div class="card stat">
     <span class="stat-label">Interviews completed</span>
     <span class="stat-value">{{ stats.count if stats else 0 }}</span>
+    <span class="stat-note">Scored interviews</span>
   </div>
-  <div class="stat">
-    <span class="stat-label">Avg Score</span>
-    <span class="stat-value">{{ "%.0f" | format(stats.average) ~ "%" if stats else "–" }}</span>
+  <div class="card stat">
+    <span class="stat-label">Average score</span>
+    <span class="stat-value">{{ "%.0f" | format(stats.average) if stats else "–" }}{% if stats %}%{% endif %}</span>
     {% if stats and stats.change is not none %}
-      <span class="stat-change">{{ "%+.0f" | format(stats.change) }} pts since your first</span>
+      <span class="stat-note {{ 'good' if stats.change >= 0 else 'warn' }}">{{ '%+.0f' | format(stats.change) }} points since your first</span>
+    {% else %}
+      <span class="stat-note">Across all interviews</span>
     {% endif %}
   </div>
-  <div class="stat">
-    <span class="stat-label">Best Score</span>
-    <span class="stat-value">{{ "%.0f" | format(stats.best) ~ "%" if stats else "–" }}</span>
-    {% if stats %}<span class="stat-change">Latest: {{ "%.0f" | format(stats.latest) }}%</span>{% endif %}
+  <div class="card stat">
+    <span class="stat-label">Best score</span>
+    <span class="stat-value">{{ "%.0f" | format(stats.best) if stats else "–" }}{% if stats %}%{% endif %}</span>
+    <span class="stat-note">{% if stats %}Latest: {{ "%.0f" | format(stats.latest) }}%{% else %}Your highest so far{% endif %}</span>
   </div>
-</section>
+</div>
 
+{# ---- Skills rings ---- #}
 {% if stats %}
-<section class="card chart-card">
-  <div class="section-head">
-    <h2>My Progress</h2>
-    {% if stats.change is not none %}
-      <span class="badge {% if stats.change < 0 %}badge-warn{% endif %}">
-        {{ "Improving" if stats.change > 0 else ("Steady" if stats.change == 0 else "Dropping") }}
-      </span>
-    {% endif %}
+<div class="card skills-card" style="margin-top:16px">
+  <div class="card-head">
+    <h2>Your skills</h2>
+    <span class="skills-head-right">
+      {% if stats.trend %}<span class="badge {{ 'badge-good' if stats.trend == 'Improving' else 'badge-warn' if stats.trend == 'Dropping' else '' }}">{{ stats.trend }}</span>{% endif %}
+      <span class="muted small">Last {{ [stats.count, 5] | min }} interview{{ 's' if stats.count != 1 }}</span>
+    </span>
   </div>
-  <canvas id="progressChart" data-chart='{{ chart|tojson }}'></canvas>
-</section>
+
+  {% if skills %}
+  <div class="skills-body">
+    <div class="rings-wrap">
+      {# Each ring is 3/4 of a circle; its filled part shows the score (0-100) #}
+      <svg class="rings" viewBox="0 0 300 300" role="img"
+           aria-label="Skill scores: {% for s in skills %}{{ s.name }} {{ s.value }}%{{ ', ' if not loop.last }}{% endfor %}">
+        {% for s in skills %}
+          {% set r = 130 - loop.index0 * 19 %}
+          {% set c = 2 * 3.14159 * r %}
+          {% set track = c * 0.75 %}
+          {% set fill = track * s.value / 100 %}
+          {% set level = 'good' if s.value >= 75 else 'ok' if s.value >= 50 else 'low' %}
+          <circle class="ring-track" cx="150" cy="150" r="{{ r }}"
+                  stroke-dasharray="{{ '%.1f' | format(track) }} {{ '%.1f' | format(c) }}"
+                  transform="rotate(-90 150 150)"/>
+          {% if s.value > 0 %}
+          <circle class="ring-fill ring-{{ level }}" cx="150" cy="150" r="{{ r }}"
+                  stroke-dasharray="{{ '%.1f' | format(fill) }} {{ '%.1f' | format(c) }}"
+                  transform="rotate(-90 150 150)">
+            <title>{{ s.name }}: {{ s.value }}%</title>
+          </circle>
+          {% endif %}
+          <text class="ring-label" x="142" y="{{ 150 - r + 4 }}" text-anchor="end">{{ s.name }} · {{ s.value }}%</text>
+        {% endfor %}
+      </svg>
+      <div class="ring-legend" aria-label="Color legend">
+        <span><i class="dot ring-good"></i>Strong (75 and up)</span>
+        <span><i class="dot ring-ok"></i>Okay (50 to 74)</span>
+        <span><i class="dot ring-low"></i>Needs work (below 50)</span>
+      </div>
+    </div>
+
+    <div class="skills-side">
+      <ul class="skill-list">
+        {% for s in skills %}
+          {% set level = 'good' if s.value >= 75 else 'ok' if s.value >= 50 else 'low' %}
+          <li>
+            <span><i class="dot ring-{{ level }}"></i>{{ s.name }}</span>
+            <span class="skill-level">{{ 'Strong' if level == 'good' else 'Okay' if level == 'ok' else 'Needs work' }} · <b>{{ s.value }}%</b></span>
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% if focus %}
+        <div class="focus-box">
+          <p class="focus-title">Focus next on: <b>{{ focus.name }}</b> ({{ focus.value }}%)</p>
+          <p class="muted">{{ focus.tip }}</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+    <p class="muted">Skill details will appear after your next scored interview.</p>
+  {% endif %}
+</div>
+{% else %}
+<div class="card empty-state" style="margin-top:16px">
+  <p>Your skills will appear here after your first scored interview.</p>
+</div>
 {% endif %}
 
-<section class="sessions">
-  <div class="section-head">
-    <h2>Recent Sessions</h2>
-  </div>
-
-  {% if interviews %}
-    <ul class="session-list">
-      {% for iv in interviews[:5] %}
-      <li class="session">
-        <div>
-          <p class="session-title">{{ iv.category }}</p>
-          <p class="session-meta">
-            {{ iv.started_at.strftime('%b %d, %Y') }}, {{ iv.difficulty }}, {{ iv.number_of_questions }} questions
-          </p>
-        </div>
-        <div class="session-actions">
-          {% if iv.status == 'completed' %}
-            {% if iv.overall_score is not none %}
-              <span class="badge">{{ "%.0f" | format(iv.overall_score) }}%</span>
-            {% else %}
-              <span class="badge badge-warn">Not scored</span>
-            {% endif %}
-            <a href="{{ url_for('interview_summary', interview_id=iv.interview_id) }}" class="btn btn-sm">View Session</a>
-          {% elif iv.status == 'in_progress' %}
-            <span class="badge badge-muted">In progress</span>
-            <a href="{{ url_for('interview', interview_id=iv.interview_id) }}" class="btn btn-sm">Continue</a>
-            <form method="POST" action="{{ url_for('cancel_interview', interview_id=iv.interview_id) }}" class="inline-form"
-                  onsubmit="return confirm('Cancel this interview? Any answers you recorded for it will be deleted.');">
-              <button type="submit" class="btn btn-sm btn-outline">Cancel</button>
-            </form>
+{# ---- Sessions ---- #}
+<h2 style="margin-top:28px">Recent sessions</h2>
+{% if interviews %}
+  {% for i in interviews %}
+    <div class="card session">
+      <div>
+        <p class="session-title">{{ i.category }}</p>
+        <p class="session-meta">{{ i.started_at.strftime('%b %d, %Y · %I:%M %p') }} · {{ i.difficulty }} · {{ i.number_of_questions }} question{{ 's' if i.number_of_questions != 1 }}</p>
+      </div>
+      <div class="session-actions">
+        {% if i.status == 'in_progress' %}
+          <span class="badge badge-warn">Unfinished</span>
+          <a href="{{ url_for('interview', interview_id=i.interview_id) }}" class="btn btn-sm">Continue</a>
+          <form method="POST" action="{{ url_for('cancel_interview', interview_id=i.interview_id) }}"
+                onsubmit="return confirm('Cancel this interview? Any answers you recorded for it will be deleted.');">
+            <button type="submit" class="btn btn-sm btn-outline">Cancel</button>
+          </form>
+        {% elif i.status == 'completed' %}
+          {% if i.evaluation_id and i.overall_score is not none %}
+            <span class="badge badge-good">Score: {{ "%.0f" | format(i.overall_score) }}%</span>
           {% else %}
-            <span class="badge badge-muted">Cancelled</span>
+            <span class="badge badge-warn">Not scored yet</span>
           {% endif %}
-        </div>
-      </li>
-      {% endfor %}
-    </ul>
-  {% else %}
-    <div class="empty">
-      <p>No interviews yet. Start your first mock interview to see your results here.</p>
+          <a href="{{ url_for('interview_summary', interview_id=i.interview_id) }}" class="btn btn-sm">View results</a>
+        {% else %}
+          <span class="badge">Cancelled</span>
+        {% endif %}
+      </div>
     </div>
-  {% endif %}
-</section>
-{% endblock %}
-
-{% block scripts %}
-{% if stats %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-<script>
-  const el = document.getElementById("progressChart");
-  const chart = JSON.parse(el.dataset.chart);
-  Chart.defaults.color = "#a1a1a8";
-  Chart.defaults.borderColor = "#3f3f43";
-  new Chart(el, {
-    type: "line",
-    data: {
-      labels: chart.labels,
-      datasets: [
-        { label: "Overall", data: chart.overall, borderColor: "#2563eb", backgroundColor: "#2563eb", borderWidth: 3, tension: .3 },
-        { label: "Answer quality", data: chart.quality, borderColor: "#10b981", backgroundColor: "#10b981", tension: .3 },
-        { label: "Speech delivery", data: chart.speech, borderColor: "#f5b70a", backgroundColor: "#f5b70a", spanGaps: true, tension: .3 }
-      ]
-    },
-    options: {
-      maintainAspectRatio: false,
-      scales: { y: { min: 0, max: 100, title: { display: true, text: "Score" } } },
-      plugins: {
-        tooltip: { callbacks: { afterLabel: ctx => "Category: " + chart.categories[ctx.dataIndex] } }
-      }
-    }
-  });
-</script>
+  {% endfor %}
+{% else %}
+  <div class="card empty-state">
+    <p><b>No interviews yet.</b><br>Start your first mock interview to get feedback on your answers, voice, and body language.</p>
+    <a href="{{ url_for('start_interview') }}" class="btn">Start my first interview</a>
+  </div>
 {% endif %}
 {% endblock %}

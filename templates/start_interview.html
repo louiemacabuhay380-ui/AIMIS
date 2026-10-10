@@ -1,52 +1,50 @@
 {% extends "base.html" %}
-{% block title %}Start an interview · AIMIS{% endblock %}
+{% block title %}Start interview · AIMIS{% endblock %}
 
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Start a Mock Interview</h1>
-    <p>Choose what you want to practice. You'll answer each question out loud.</p>
+    <h1>Start a mock interview</h1>
+    <p>Choose what you want to practice. All questions focus on soft skills.</p>
   </div>
 </div>
 
-<form method="POST" class="card form-dark">
-  <div class="field">
-    <label for="category">Interview focus</label>
-    <select id="category" name="category">
-      {% for c in categories %}<option>{{ c }}</option>{% endfor %}
-    </select>
-  </div>
+<ol class="how-steps">
+  <li><span class="step-num">1</span><span><b>Check devices</b>Make sure your microphone and camera work.</span></li>
+  <li><span class="step-num">2</span><span><b>Answer out loud</b>The interviewer asks each question; you record your answer.</span></li>
+  <li><span class="step-num">3</span><span><b>Get feedback</b>See your scores and tips to improve.</span></li>
+</ol>
 
-  <div class="field">
-    <label>Difficulty</label>
-    <div class="choice-group">
-      {% for d in ["Beginner", "Intermediate", "Advanced"] %}
-        <label class="choice">
-          <input type="radio" name="difficulty" value="{{ d }}" {% if loop.first %}checked{% endif %}>
-          <span>{{ d }}</span>
-        </label>
-      {% endfor %}
-    </div>
-  </div>
-
-  <div class="field">
-    <label for="number_of_questions">Number of questions</label>
-    <input id="number_of_questions" name="number_of_questions" type="number" min="1" max="10" value="3">
-  </div>
-
-  <div class="consent-box">
-    <h2>Privacy and Consent</h2>
-    <p>I agree to have my voice recorded and my camera used during this interview. My voice
-    recordings are processed by a third-party AI service. My camera is analyzed only on this
-    device; video is never recorded or uploaded, and only the behavior scores are saved.</p>
-    <label>
-      <input type="checkbox" name="consent" value="yes" required>
-      I understand and agree to be recorded.
+<div class="card" style="max-width:680px">
+  <form method="POST" class="form">
+    <label>Category
+      <select name="category">
+        {% for c in categories %}<option>{{ c }}</option>{% endfor %}
+      </select>
+      <span class="field-hint">The soft skill to practice. Questions from this category are picked at random, and ones you haven't answered yet come first.</span>
     </label>
-  </div>
+    <label>Difficulty
+      <select name="difficulty">
+        <option>Beginner</option><option>Intermediate</option><option>Advanced</option>
+      </select>
+      <span class="field-hint">Beginner questions are general; Advanced ones ask about harder real situations.</span>
+    </label>
+    <label>Number of questions
+      <input name="number_of_questions" type="number" min="1" max="10" value="3">
+      <span class="field-hint">1 to 10. Each answer can be up to 3 minutes.</span>
+    </label>
 
-  <button type="submit" class="btn btn-block">Continue</button>
-</form>
+    <label class="consent">
+      <input type="checkbox" name="consent" value="yes" required>
+      <span>I agree to have my voice recorded and my camera used during this interview. My voice
+      recordings are processed by a third-party AI service. My camera is analyzed only on this
+      device; video is never recorded or uploaded, and only the behavior scores are saved.</span>
+    </label>
 
-<a href="{{ url_for('dashboard') }}" class="back-link">← Back to dashboard</a>
+    <div class="btn-row">
+      <button type="submit" class="btn btn-lg">Begin interview</button>
+      <a href="{{ url_for('dashboard') }}" class="btn btn-outline btn-lg">Back</a>
+    </div>
+  </form>
+</div>
 {% endblock %}
