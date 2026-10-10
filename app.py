@@ -1,3 +1,4 @@
+import json
 import os
 import wave
 from functools import wraps
@@ -390,6 +391,27 @@ def interview(interview_id):
         cursor.execute("""INSERT INTO responses (interview_question_id, audio_path, duration)
                           VALUES (%s, %s, %s)""",
                        (submitted_id, f"uploads/audio/{filename}", duration))
+        response_id = cursor.lastrowid
+
+        # Save the behavior scores calculated in the browser (eye contact, expression, gestures)
+        behavior = request.form.get("behavior")
+        print("Behavior data received:", "yes" if behavior else "NO")
+        
+        if behavior:
+            try:
+                b = json.loads(behavior)
+                values = [min(max(float(b.get(k, 0)), 0), 100) for k in
+                          ("eye_contact_score", "face_visibility_score", "facial_expression_score",
+                           "gesture_score", "smile_ratio", "gesture_ratio")]
+                cursor.execute("""INSERT INTO behavior_analysis
+                                  (response_id, eye_contact_score, face_visibility_score,
+                                   facial_expression_score, gesture_score, smile_ratio,
+                                   gesture_ratio, frames_analyzed)
+                                  VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                               (response_id, *values, int(b.get("frames_analyzed", 0))))
+            except (ValueError, TypeError, AttributeError):
+                pass   # invalid data from the browser: skip behavior for this answer
+
         conn.commit()
         conn.close()
         return jsonify(ok=True)
@@ -411,18 +433,22 @@ def interview_summary(interview_id):
         return redirect(url_for("dashboard"))
 
     cursor.execute("""SELECT iq.question_order, qb.question_text, r.transcript, r.audio_path,
-                    n.relevance_score, n.clarity_score, n.completeness_score, n.grammar_score,
-                    n.word_count, n.vocabulary_diversity, n.keyword_count, n.keywords_found,
-                    s.speaking_rate, s.filler_word_count, s.pause_count, s.fluency_score, s.total_pause_time,
-                    s.longest_pause, s.pitch_variation,
-                    s.volume_variation, s.speech_ratio, s.confidence_score, s.volume_variation, s.speech_ratio, s.confidence_score, s.clarity_score AS speech_clarity
-                    FROM interview_questions iq
-                    JOIN question_bank qb ON qb.question_id = iq.question_id
-                    LEFT JOIN responses r ON r.interview_question_id = iq.interview_question_id
-                    LEFT JOIN nlp_analysis n ON n.response_id = r.response_id
-                    LEFT JOIN speech_analysis s ON s.response_id = r.response_id
-                    WHERE iq.interview_id = %s
-                    ORDER BY iq.question_order""", (interview_id,))
+                             n.relevance_score, n.clarity_score, n.completeness_score, n.grammar_score,
+                             n.word_count, n.vocabulary_diversity, n.keyword_count, n.keywords_found,
+                             s.speaking_rate, s.filler_word_count, s.pause_count, s.fluency_score,
+                             s.total_pause_time, s.longest_pause, s.pitch_variation,
+                             s.volume_variation, s.speech_ratio, s.confidence_score,
+                             s.clarity_score AS speech_clarity,
+                             b.eye_contact_score, b.face_visibility_score, b.facial_expression_score,
+                             b.gesture_score, b.smile_ratio, b.gesture_ratio
+                      FROM interview_questions iq
+                      JOIN question_bank qb ON qb.question_id = iq.question_id
+                      LEFT JOIN responses r ON r.interview_question_id = iq.interview_question_id
+                      LEFT JOIN nlp_analysis n ON n.response_id = r.response_id
+                      LEFT JOIN speech_analysis s ON s.response_id = r.response_id
+                      LEFT JOIN behavior_analysis b ON b.response_id = r.response_id
+                      WHERE iq.interview_id = %s
+                      ORDER BY iq.question_order""", (interview_id,))
     answers = cursor.fetchall()
     cursor.execute("SELECT * FROM evaluations WHERE interview_id = %s", (interview_id,))
     evaluation = cursor.fetchone()

@@ -1,21 +1,182 @@
 {% extends "base.html" %}
-{% block content %}
-<h2>{{ iv.category }} Interview ({{ iv.difficulty }})</h2>
-<p>Question {{ current.question_order }} of {{ iv.number_of_questions }}</p>
-<h3>{{ current.question_text }}</h3>
+{% block title %}Interview · AIMIS{% endblock %}
 
-<button id="recordBtn">Start recording</button>
-<button id="stopBtn" disabled>Stop</button>
-<span id="timer">0:00</span>
-<p id="status">Click "Start recording" when you're ready to answer.</p>
-<audio id="preview" controls hidden></audio><br>
-<button id="submitBtn" hidden>Submit answer</button>
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{{ iv.category }} Interview</h1>
+    <p>{{ iv.difficulty }}</p>
+  </div>
+  <span class="progress-text">Question {{ current.question_order }} of {{ iv.number_of_questions }}</span>
+</div>
+
+<div class="steps" aria-hidden="true">
+  {% for n in range(1, iv.number_of_questions + 1) %}
+    <span class="{% if n < current.question_order %}done{% elif n == current.question_order %}now{% endif %}"></span>
+  {% endfor %}
+</div>
+
+<div class="card question-card">
+  <p class="question-label">Question {{ current.question_order }}</p>
+  <p class="question-text">{{ current.question_text }}</p>
+</div>
+
+<div class="interview-grid" id="interviewArea" style="margin-top:14px">
+  <!-- Camera: analyzed on this device only, never recorded or uploaded -->
+  <div class="card camera-card">
+    <div class="camera-frame">
+      <video id="selfView" autoplay muted playsinline></video>
+      <span class="camera-badge"><span class="rec-dot"></span>Camera</span>
+    </div>
+    <p id="cameraStatus" class="camera-status">Starting camera...</p>
+    <p class="privacy-note">Your video stays on this device. Only behavior scores are saved.</p>
+  </div>
+
+  <!-- Recorder -->
+  <div class="card recorder">
+    <div class="rec-timer" id="timer">0:00</div>
+    <div class="rec-indicator"><span class="rec-dot"></span><span id="recLabel">Ready to record</span></div>
+
+    <div class="btn-row">
+      <button id="recordBtn" type="button" class="btn">Start recording</button>
+      <button id="stopBtn" type="button" class="btn btn-danger" disabled>Stop</button>
+    </div>
+
+    <audio id="preview" controls hidden></audio>
+    <p id="status" class="rec-status">Click "Start recording" when you're ready to answer. You have up to 3 minutes.</p>
+
+    <div class="btn-row">
+      <button id="submitBtn" type="button" class="btn" hidden>Submit answer</button>
+    </div>
+  </div>
+</div>
 
 <form method="POST" action="{{ url_for('cancel_interview', interview_id=iv.interview_id) }}"
-      style="margin-top:24px;"
+      style="margin-top:18px;"
       onsubmit="return confirm('Cancel this interview? Any answers you recorded for it will be deleted.');">
-  <button type="submit">Cancel interview</button>
+  <button type="submit" class="btn btn-outline">Cancel interview</button>
 </form>
+
+<script type="module">
+import { FilesetResolver, FaceLandmarker, HandLandmarker }
+  from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+
+const video = document.getElementById("selfView");
+const camStatus = document.getElementById("cameraStatus");
+const SAMPLE_MS = 200;   // analyze 5 frames per second
+let face = null, hands = null, timer = null, stats = null, lastWrist = null;
+
+function emptyStats() {
+  return { frames: 0, faceFrames: 0, eyeContactFrames: 0, smileFrames: 0,
+           frownFrames: 0, gestureFrames: 0 };
+}
+function blend(name, cats) {
+  const c = cats.find(c => c.categoryName === name);
+  return c ? c.score : 0;
+}
+function clamp(v) { return Math.max(0, Math.min(100, v)); }
+
+function analyzeFrame() {
+  if (!face || !hands || video.readyState < 2) return;
+  const now = performance.now();
+  stats.frames++;
+
+  // Face: visibility, eye contact, expression
+  const f = face.detectForVideo(video, now);
+  if (f.faceLandmarks.length) {
+    stats.faceFrames++;
+    const lm = f.faceLandmarks[0];
+    const nose = lm[1], left = lm[234], right = lm[454];       // nose tip and both cheeks
+    const width = Math.abs(right.x - left.x) || 1;
+    const facingCamera = Math.abs((nose.x - (left.x + right.x) / 2) / width) < 0.12;
+    const cats = f.faceBlendshapes[0].categories;
+    const lookingAway = Math.max(
+      blend("eyeLookOutLeft", cats), blend("eyeLookOutRight", cats),
+      blend("eyeLookInLeft", cats), blend("eyeLookInRight", cats),
+      blend("eyeLookUpLeft", cats), blend("eyeLookDownLeft", cats)) > 0.6;
+    if (facingCamera && !lookingAway) stats.eyeContactFrames++;
+    if ((blend("mouthSmileLeft", cats) + blend("mouthSmileRight", cats)) / 2 > 0.3) stats.smileFrames++;
+    if ((blend("browDownLeft", cats) + blend("browDownRight", cats)) / 2 > 0.5) stats.frownFrames++;
+  }
+
+  // Hands: gestures
+  const h = hands.detectForVideo(video, now);
+  if (h.landmarks.length) {
+    const wrist = h.landmarks[0][0];
+    if (lastWrist && Math.hypot(wrist.x - lastWrist.x, wrist.y - lastWrist.y) > 0.02) stats.gestureFrames++;
+    lastWrist = wrist;
+  } else {
+    lastWrist = null;
+  }
+}
+
+function computeScores(s) {
+  const smileRatio = s.faceFrames ? s.smileFrames / s.faceFrames : 0;
+  const frownRatio = s.faceFrames ? s.frownFrames / s.faceFrames : 0;
+  const gestureRatio = s.gestureFrames / s.frames;
+
+  let expression = smileRatio >= 0.1 ? 100 : 70 + smileRatio * 300;   // some smiling is ideal
+  expression = clamp(expression - frownRatio * 50);                   // frequent frowning lowers it
+
+  let gesture;
+  if (gestureRatio < 0.05) gesture = 70;                              // little or no gesturing
+  else if (gestureRatio <= 0.5) gesture = 100;                        // natural gesturing
+  else gesture = clamp(100 - (gestureRatio - 0.5) * 120);             // constant movement / fidgeting
+
+  return {
+    frames_analyzed: s.frames,
+    face_visibility_score: +(s.faceFrames / s.frames * 100).toFixed(2),
+    eye_contact_score: +(s.eyeContactFrames / s.frames * 100).toFixed(2),
+    facial_expression_score: +expression.toFixed(2),
+    gesture_score: +gesture.toFixed(2),
+    smile_ratio: +(smileRatio * 100).toFixed(2),
+    gesture_ratio: +(gestureRatio * 100).toFixed(2),
+  };
+}
+
+// The recording script calls start() and stop()
+window.behavior = {
+  ready: false,
+  active: false,          // NEW: remembers that recording started, even before the camera was ready
+  start() {
+    stats = emptyStats();
+    lastWrist = null;
+    clearInterval(timer);
+    this.active = true;
+    if (this.ready) timer = setInterval(analyzeFrame, SAMPLE_MS);
+  },
+  stop() {
+    this.active = false;
+    clearInterval(timer);
+    timer = null;
+    return (stats && stats.frames > 0) ? computeScores(stats) : null;
+  },
+};
+
+async function init() {
+  try {
+    video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+    const fileset = await FilesetResolver.forVisionTasks(
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+    face = await FaceLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath:
+        "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" },
+      runningMode: "VIDEO", numFaces: 1, outputFaceBlendshapes: true });
+    hands = await HandLandmarker.createFromOptions(fileset, {
+      baseOptions: { modelAssetPath:
+        "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" },
+      runningMode: "VIDEO", numHands: 2 });
+    window.behavior.ready = true;
+    // NEW: if recording already started while the models were loading, begin analyzing now
+    if (window.behavior.active) timer = setInterval(analyzeFrame, SAMPLE_MS);
+    camStatus.textContent = "Camera ready. Try to look at the camera while you answer.";
+  } catch (e) {
+    console.error(e);
+    camStatus.textContent = "The camera couldn't start, so behavior won't be analyzed for this answer.";
+  }
+}
+init();
+</script>
 
 <script>
 const questionId = "{{ current.interview_question_id }}";
@@ -26,9 +187,31 @@ const submitBtn = document.getElementById("submitBtn");
 const statusEl = document.getElementById("status");
 const timerEl = document.getElementById("timer");
 const preview = document.getElementById("preview");
-let recorder, stream, chunks = [], wavBlob = null, timerId, seconds = 0;
+const interviewArea = document.getElementById("interviewArea");
+const recLabel = document.getElementById("recLabel");
+let recorder = null, stream = null, chunks = [], wavBlob = null, timerId = null, seconds = 0;
+let state = "idle";   // idle | recording | preparing | ready | uploading
+let behaviorResult = null;
+
+// One place controls every button, so they can never be used at the wrong time
+function setState(newState) {
+  state = newState;
+  recordBtn.disabled = !(state === "idle" || state === "ready");
+  stopBtn.disabled = state !== "recording";
+  submitBtn.disabled = state !== "ready";
+  submitBtn.hidden = !(state === "ready" || state === "uploading");
+  preview.hidden = !(state === "ready" || state === "uploading");
+  recordBtn.textContent = (state === "ready") ? "Record again" : "Start recording";
+  // Visual state: red dot + label while recording
+  interviewArea.classList.toggle("recording", state === "recording");
+  recLabel.textContent = {
+    idle: "Ready to record", recording: "Recording", preparing: "Preparing...",
+    ready: "Recording finished", uploading: "Saving..."
+  }[state];
+}
 
 recordBtn.onclick = async () => {
+  if (state !== "idle" && state !== "ready") return;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e) {
@@ -36,52 +219,58 @@ recordBtn.onclick = async () => {
     return;
   }
   chunks = [];
+  wavBlob = null;                       // forget any previous take
   recorder = new MediaRecorder(stream);
   recorder.ondataavailable = e => chunks.push(e.data);
   recorder.onstop = async () => {
     stream.getTracks().forEach(t => t.stop());
+    setState("preparing");
     statusEl.textContent = "Preparing your recording...";
-    wavBlob = await toWav(new Blob(chunks, { type: recorder.mimeType }));
-    preview.src = URL.createObjectURL(wavBlob);
-    preview.hidden = false;
-    submitBtn.hidden = false;
-    recordBtn.disabled = false;
-    recordBtn.textContent = "Record again";
-    statusEl.textContent = "Listen back if you like, then submit your answer.";
+    try {
+      wavBlob = await toWav(new Blob(chunks, { type: recorder.mimeType }));
+      preview.src = URL.createObjectURL(wavBlob);
+      setState("ready");
+      statusEl.textContent = "Listen back if you like, then submit your answer.";
+    } catch (e) {
+      setState("idle");
+      statusEl.textContent = "Something went wrong with that recording. Please record again.";
+    }
   };
   recorder.start();
+  behaviorResult = null;
+  if (window.behavior) window.behavior.start();
   seconds = 0;
   timerEl.textContent = "0:00";
+  clearInterval(timerId);
   timerId = setInterval(() => {
     seconds++;
     timerEl.textContent = Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
     if (seconds >= MAX_SECONDS) stopBtn.click();
   }, 1000);
-  recordBtn.disabled = true;
-  stopBtn.disabled = false;
-  preview.hidden = true;
-  submitBtn.hidden = true;
+  setState("recording");
   statusEl.textContent = "Recording... speak your answer.";
 };
 
 stopBtn.onclick = () => {
-  if (recorder && recorder.state === "recording") recorder.stop();
+  if (state !== "recording") return;
   clearInterval(timerId);
-  stopBtn.disabled = true;
+  behaviorResult = window.behavior ? window.behavior.stop() : null;
+  recorder.stop();                      // onstop above takes over
 };
 
 submitBtn.onclick = async () => {
-  submitBtn.disabled = true;
-  recordBtn.disabled = true;
+  if (state !== "ready" || !wavBlob) return;   // ignore clicks at the wrong time
+  setState("uploading");
   statusEl.textContent = "Saving your answer...";
   const form = new FormData();
   form.append("interview_question_id", questionId);
   form.append("audio", wavBlob, "answer.wav");
+  if (behaviorResult) form.append("behavior", JSON.stringify(behaviorResult));
   try {
     const res = await fetch(window.location.href, { method: "POST", body: form });
     const data = await res.json().catch(() => ({ ok: true }));
     if (data.ok || res.status === 409) {
-      statusEl.textContent = "Saved! Loading the next step...";
+      statusEl.textContent = "Saved! Loading the next question...";
       window.location.reload();
       return;
     }
@@ -89,8 +278,7 @@ submitBtn.onclick = async () => {
   } catch (e) {
     statusEl.textContent = "Upload failed. Check your connection and submit again.";
   }
-  submitBtn.disabled = false;
-  recordBtn.disabled = false;
+  setState("ready");                    // let them retry or record again
 };
 
 // Convert the browser recording into a mono 16-bit WAV file that Gemini can read
@@ -116,5 +304,6 @@ async function toWav(blob) {
   return new Blob([view], { type: "audio/wav" });
 }
 
+setState("idle");
 </script>
 {% endblock %}
