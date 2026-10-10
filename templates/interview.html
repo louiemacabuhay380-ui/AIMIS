@@ -1,57 +1,5 @@
 {% extends "base.html" %}
 {% block title %}Interview · AIMIS{% endblock %}
-<<<<<<< HEAD
-
-{% block content %}
-<div class="page-head">
-  <div>
-    <h1>{{ iv.category }} Interview</h1>
-    <p>{{ iv.difficulty }}</p>
-  </div>
-  <span class="progress-text">Question {{ current.question_order }} of {{ iv.number_of_questions }}</span>
-</div>
-
-<div class="steps" aria-hidden="true">
-  {% for n in range(1, iv.number_of_questions + 1) %}
-    <span class="{% if n < current.question_order %}done{% elif n == current.question_order %}now{% endif %}"></span>
-  {% endfor %}
-</div>
-
-<div class="card question-card">
-  <p class="question-label">Question {{ current.question_order }}</p>
-  <p class="question-text">{{ current.question_text }}</p>
-</div>
-
-<div class="interview-grid" id="interviewArea" style="margin-top:14px">
-  <!-- Camera: analyzed on this device only, never recorded or uploaded -->
-  <div class="card camera-card">
-    <div class="camera-frame">
-      <video id="selfView" autoplay muted playsinline></video>
-      <span class="camera-badge"><span class="rec-dot"></span>Camera</span>
-    </div>
-    <p id="cameraStatus" class="camera-status">Starting camera...</p>
-    <p class="privacy-note">Your video stays on this device. Only behavior scores are saved.</p>
-  </div>
-
-  <!-- Recorder -->
-  <div class="card recorder">
-    <div class="rec-timer" id="timer">0:00</div>
-    <div class="rec-indicator"><span class="rec-dot"></span><span id="recLabel">Ready to record</span></div>
-
-    <div class="btn-row">
-      <button id="recordBtn" type="button" class="btn">Start recording</button>
-      <button id="stopBtn" type="button" class="btn btn-danger" disabled>Stop</button>
-    </div>
-
-    <audio id="preview" controls hidden></audio>
-    <p id="status" class="rec-status">Click "Start recording" when you're ready to answer. You have up to 3 minutes.</p>
-
-    <div class="btn-row">
-      <button id="submitBtn" type="button" class="btn" hidden>Submit answer</button>
-    </div>
-  </div>
-</div>
-=======
 
 {% block content %}
 <div class="page-head">
@@ -92,7 +40,6 @@
   </div>
 </div>
 
->>>>>>> 01c5a6d6218701097f56545e20774388e1676512
 
 <form method="POST" action="{{ url_for('cancel_interview', interview_id=iv.interview_id) }}"
       style="margin-top:18px;"
@@ -180,25 +127,13 @@ function computeScores(s) {
 // The recording script calls start() and stop()
 window.behavior = {
   ready: false,
-<<<<<<< HEAD
-  active: false,          // NEW: remembers that recording started, even before the camera was ready
-=======
->>>>>>> 01c5a6d6218701097f56545e20774388e1676512
   start() {
     stats = emptyStats();
     lastWrist = null;
     clearInterval(timer);
-<<<<<<< HEAD
-    this.active = true;
     if (this.ready) timer = setInterval(analyzeFrame, SAMPLE_MS);
   },
   stop() {
-    this.active = false;
-=======
-    if (this.ready) timer = setInterval(analyzeFrame, SAMPLE_MS);
-  },
-  stop() {
->>>>>>> 01c5a6d6218701097f56545e20774388e1676512
     clearInterval(timer);
     timer = null;
     return (stats && stats.frames > 0) ? computeScores(stats) : null;
@@ -219,11 +154,6 @@ async function init() {
         "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" },
       runningMode: "VIDEO", numHands: 2 });
     window.behavior.ready = true;
-<<<<<<< HEAD
-    // NEW: if recording already started while the models were loading, begin analyzing now
-    if (window.behavior.active) timer = setInterval(analyzeFrame, SAMPLE_MS);
-=======
->>>>>>> 01c5a6d6218701097f56545e20774388e1676512
     camStatus.textContent = "Camera ready. Try to look at the camera while you answer.";
   } catch (e) {
     console.error(e);
@@ -233,11 +163,6 @@ async function init() {
 init();
 </script>
 
-<<<<<<< HEAD
-=======
-
-
->>>>>>> 01c5a6d6218701097f56545e20774388e1676512
 <script>
 const questionId = "{{ current.interview_question_id }}";
 const MAX_SECONDS = 180;
@@ -247,11 +172,8 @@ const submitBtn = document.getElementById("submitBtn");
 const statusEl = document.getElementById("status");
 const timerEl = document.getElementById("timer");
 const preview = document.getElementById("preview");
-<<<<<<< HEAD
 const interviewArea = document.getElementById("interviewArea");
 const recLabel = document.getElementById("recLabel");
-=======
->>>>>>> 01c5a6d6218701097f56545e20774388e1676512
 let recorder = null, stream = null, chunks = [], wavBlob = null, timerId = null, seconds = 0;
 let state = "idle";   // idle | recording | preparing | ready | uploading
 let behaviorResult = null;
