@@ -5,6 +5,7 @@
 
 :root,
 [data-theme="light"] {
+  --page-width: 1320px;   /* the same width for the header and every page */
   --bg: #f4f6fb;
   --surface: #ffffff;
   --surface-2: #f1f4f9;
@@ -90,7 +91,7 @@ p  { margin: 0 0 8px; }
   border-bottom: 1px solid var(--border);
 }
 .site-header-inner {
-  max-width: 1100px;
+  max-width: var(--page-width);
   margin: 0 auto;
   padding: 12px 20px;
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -146,7 +147,7 @@ p  { margin: 0 0 8px; }
 }
 
 /* ---------- Layout ---------- */
-.container { max-width: 1100px; margin: 0 auto; padding: 28px 20px 56px; }
+.container { max-width: var(--page-width); margin: 0 auto; padding: 28px 20px 56px; }
 
 .page-head {
   display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;
@@ -246,8 +247,7 @@ input:focus, select:focus { outline: 3px solid var(--primary-soft); border-color
 .auth-card { max-width: 440px; margin: 24px auto; text-align: center; padding: 32px 28px; }
 .auth-card .form { text-align: left; margin-top: 20px; }
 .auth-logo { width: 130px; max-height: 130px; object-fit: contain; display: block; margin: 0 auto 14px; }
-/* Dark mode: show the logo itself in white so it stands out on the dark background */
-[data-theme="dark"] .auth-logo { filter: brightness(0) invert(1); }
+/* In dark mode a script swaps in a version of the logo whose dark lines are white (see base.html) */
 .auth-switch { margin-top: 18px; }
 
 /* ---------- How-it-works steps ---------- */
@@ -459,7 +459,7 @@ input:focus, select:focus { outline: 3px solid var(--primary-soft); border-color
   .session { flex-direction: column; align-items: flex-start; }
   .session-actions { justify-content: flex-start; }
   .theme-label { display: none; }
-  .site-header-inner { padding: 10px 14px; }
+  .site-header-inner { padding: 10px 20px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -648,3 +648,53 @@ input:focus, select:focus { outline: 3px solid var(--primary-soft); border-color
 @keyframes rb-blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.12); } }
 @keyframes rb-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
 @keyframes rb-glow { from { opacity: 0.6; } to { opacity: 1; } }
+
+/* ================================================================
+   Bigger interview layout: wider page, boxes fill the window height
+   ================================================================ */
+.container.container-wide { padding-top: 18px; }   /* same width as every page */
+.container-wide .page-head { margin-bottom: 12px; }
+.container-wide .steps { margin-bottom: 14px; }
+
+.container-wide .iv-layout {
+  grid-template-columns: minmax(360px, 46%) 1fr;
+  height: calc(100vh - 250px);
+  min-height: 470px;
+  gap: 18px;
+}
+.container-wide .iv-media { min-height: 0; }
+.container-wide .iv-media .iv-box { flex: 1; aspect-ratio: auto; min-height: 0; }
+
+/* robot and its caption */
+.container-wide .robot { width: clamp(140px, 22vh, 220px); }
+.container-wide .ai-name { font-size: 20px; margin-top: 10px; }
+.container-wide .live-tip { font-size: 16px; padding: 8px 16px; }
+.container-wide .rec-badge, .container-wide .cam-label { font-size: 14px; padding: 5px 12px; }
+.container-wide .iv-timer { font-size: 24px; }
+
+/* conversation */
+.container-wide .iv-chat { min-height: 0; }
+.container-wide .chat-log { max-height: none; padding: 24px; gap: 16px; }
+.container-wide .bubble { padding: 14px 18px; font-size: 17px; }
+.container-wide .bubble-who { font-size: 13px; }
+.container-wide .bubble-question { font-size: 22px; }
+.container-wide .chat-start { font-size: 17px; max-width: 520px; }
+.container-wide .chat-actions { padding: 16px 24px 20px; }
+.container-wide .rec-status { font-size: 15px; }
+.container-wide .chat-actions .btn { min-height: 56px; padding: 14px 28px; font-size: 18px; }
+
+/* smaller screens: stack the boxes and let the page scroll */
+@media (max-width: 960px) {
+  .container-wide .iv-layout { grid-template-columns: 1fr; height: auto; min-height: 0; }
+  .container-wide .iv-media { flex-direction: row; }
+  .container-wide .iv-media .iv-box { aspect-ratio: 4 / 3; flex: 1; }
+  .container-wide .iv-chat { min-height: 460px; }
+  .container-wide .robot { width: 150px; }
+}
+@media (max-width: 560px) {
+  .container-wide .iv-media { flex-direction: column; }
+}
+
+@media (max-width: 760px) {
+  .iv-head { align-items: flex-start; }
+}
