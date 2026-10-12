@@ -36,6 +36,7 @@
 
   <!-- ===== Left column: robot interviewer (top) and the user's camera (bottom) ===== -->
   <div class="iv-media">
+<<<<<<< HEAD
     <div class="iv-box ai-box" id="interviewer" data-mood="happy">
       <span class="rec-badge" id="recBadge"><span class="rec-dot"></span><span id="recLabel">Ready</span></span>
 
@@ -90,6 +91,37 @@
             <ellipse id="robotMouth" cx="110" cy="128" rx="8" ry="1.5" class="rb-mouth"/>
           </g>
         </g>
+=======
+    <div class="iv-box ai-box" id="interviewer">
+      <span class="rec-badge" id="recBadge"><span class="rec-dot"></span><span id="recLabel">Ready</span></span>
+
+      <svg class="robot" viewBox="0 0 160 170" aria-hidden="true">
+        <!-- antenna -->
+        <line x1="80" y1="22" x2="80" y2="40" class="rb-antenna"/>
+        <circle cx="80" cy="17" r="7" class="rb-light"/>
+        <!-- ears -->
+        <rect x="17" y="68" width="14" height="30" rx="6" class="rb-ear"/>
+        <rect x="129" y="68" width="14" height="30" rx="6" class="rb-ear"/>
+        <!-- head -->
+        <rect x="28" y="38" width="104" height="88" rx="30" class="rb-head"/>
+        <!-- face screen -->
+        <rect x="41" y="51" width="78" height="62" rx="20" class="rb-screen"/>
+        <!-- eyes -->
+        <g class="rb-eyes">
+          <ellipse cx="63" cy="76" rx="7" ry="8.5" class="rb-eye"/>
+          <ellipse cx="97" cy="76" rx="7" ry="8.5" class="rb-eye"/>
+          <circle cx="65.5" cy="72.5" r="2.2" class="rb-shine"/>
+          <circle cx="99.5" cy="72.5" r="2.2" class="rb-shine"/>
+        </g>
+        <!-- cheeks -->
+        <ellipse cx="52" cy="93" rx="5" ry="3.2" class="rb-cheek"/>
+        <ellipse cx="108" cy="93" rx="5" ry="3.2" class="rb-cheek"/>
+        <!-- mouth: its size changes with each sound while speaking (lip sync) -->
+        <ellipse id="robotMouth" cx="80" cy="97" rx="9" ry="2" class="rb-mouth"/>
+        <!-- body -->
+        <rect x="52" y="128" width="56" height="34" rx="14" class="rb-body"/>
+        <circle cx="80" cy="145" r="6" class="rb-chest"/>
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
       </svg>
 
       <p class="ai-name">AIMIS Bot</p>
@@ -332,6 +364,7 @@ if (canSpeak) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
 
 // Mouth shapes (width, height) for groups of sounds
 const MOUTH = {
+<<<<<<< HEAD
   rest:   [8, 1.5],   // closed: the smile is shown instead
   closed: [8, 1],     // m, b, p
   a:      [7, 6],     // "ah"
@@ -340,6 +373,16 @@ const MOUTH = {
   u:      [4, 4],     // "oo", w
   f:      [8, 2.2],   // f, v
   mid:    [7, 3.5],   // most other consonants
+=======
+  rest:   [9, 2],     // closed / smiling line
+  closed: [8, 1.2],   // m, b, p
+  a:      [9, 7.5],   // "ah"
+  e:      [11, 4],    // "ee", "eh"
+  o:      [6.5, 7.5], // "oh"
+  u:      [4.5, 5],   // "oo", w
+  f:      [9, 2.6],   // f, v
+  mid:    [8, 4],     // most other consonants
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
 };
 function shapeFor(ch) {
   ch = (ch || " ").toLowerCase();
@@ -356,6 +399,7 @@ function setMouth(shape) {
   const [rx, ry] = MOUTH[shape];
   mouth.setAttribute("rx", rx);
   mouth.setAttribute("ry", ry);
+<<<<<<< HEAD
   robotBox.classList.toggle("mouth-open", shape !== "rest");   // hides the smile while the mouth is open
 }
 
@@ -369,6 +413,10 @@ function setMood(mood, ms) {
 const MOOD_FOR_STATE = { idle: "happy", asking: "neutral", recording: "listening",
                          saving: "thinking", error: "concerned", finished: "happy" };
 
+=======
+}
+
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
 // Lip sync: the browser reports each word as it is spoken (onboundary). Between those reports,
 // the mouth steps through the word's letters. If the voice never reports words, the position
 // is estimated from the elapsed time instead.
@@ -392,6 +440,7 @@ function stopLip() {
 
 // Speaks text with lip sync, then calls done(). A safety timer keeps the session going
 // even if the browser never reports that speaking finished.
+<<<<<<< HEAD
 // Words the voice should pronounce differently from how they are written.
 // "AIMIS" would be spelled out letter by letter, so the voice reads it as "Aymis" (EY-mis).
 const PRONOUNCE = [[/\bAIMIS\b/g, "Aymis"]];
@@ -399,6 +448,8 @@ function sayLike(text) {
   return PRONOUNCE.reduce((t, [pattern, spoken]) => t.replace(pattern, spoken), text);
 }
 
+=======
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
 function say(text, done) {
   if (!canSpeak || !voiceMode.checked) { done && done(); return; }
   let finished = false;
@@ -410,7 +461,10 @@ function say(text, done) {
     done && done();
   };
   speechSynthesis.cancel();
+<<<<<<< HEAD
   text = sayLike(text);                  // fix how names are pronounced (only the voice; the chat text stays the same)
+=======
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
   const u = new SpeechSynthesisUtterance(text);
   if (voice) u.voice = voice;
   u.rate = 0.95;
@@ -433,6 +487,7 @@ const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, finalText = "", fillerCount = 0;
 const FILLERS = /\b(um+|uh+|erm|ah+|ano|parang|kasi|yung)\b/gi;
 
+<<<<<<< HEAD
 let gotWords = false, recErrors = 0, noTextTimer = null;
 const REC_ERRORS = {
   "not-allowed": "Live text is blocked. Allow the microphone for this site, or use Chrome or Edge.",
@@ -452,11 +507,19 @@ function startTranscript() {
     showRecProblem("This browser can't show live text. Use Chrome or Microsoft Edge.");
     return;
   }
+=======
+function startTranscript() {
+  finalText = ""; fillerCount = 0;
+  if (!SpeechRec) { answerText.textContent = "Recording your answer..."; return; }
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
   rec = new SpeechRec();
   rec.lang = "en-US";
   rec.continuous = true;
   rec.interimResults = true;
+<<<<<<< HEAD
   rec.maxAlternatives = 1;
+=======
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
   rec.onresult = e => {
     let interim = "";
     for (let i = e.resultIndex; i < e.results.length; i++) {
@@ -464,6 +527,7 @@ function startTranscript() {
       if (e.results[i].isFinal) { finalText += t + " "; fillerCount += (t.match(FILLERS) || []).length; }
       else interim += t;
     }
+<<<<<<< HEAD
     const text = (finalText + interim).trim();
     if (text) { gotWords = true; recErrors = 0; }
     answerText.textContent = text || "Listening...";
@@ -493,6 +557,16 @@ function startTranscript() {
 function stopTranscript() {
   clearTimeout(noTextTimer);
   if (rec) { rec.onend = null; rec.onerror = null; try { rec.stop(); } catch (e) {} rec = null; }
+=======
+    answerText.textContent = (finalText + interim).trim() || "Listening...";
+    chatLog.scrollTop = chatLog.scrollHeight;
+  };
+  rec.onend = () => { if (state === "recording") { try { rec.start(); } catch (e) {} } };   // keep listening
+  try { rec.start(); } catch (e) {}
+}
+function stopTranscript() {
+  if (rec) { rec.onend = null; try { rec.stop(); } catch (e) {} rec = null; }
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
 }
 
 // ---------- Microphone loudness (used only for the live tips) ----------
@@ -552,7 +626,10 @@ function setState(newState) {
   area.classList.toggle("recording", state === "recording");
   recLabel.textContent = { idle: "Ready", asking: "Asking", recording: "Rec", saving: "Saving",
                            error: "Paused", finished: "Done" }[state];
+<<<<<<< HEAD
   setMood(MOOD_FOR_STATE[state] || "neutral");
+=======
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
 }
 function updateProgress() {
   progressText.textContent = `Question ${current.number} of ${total}`;
@@ -591,7 +668,10 @@ function askQuestion(lead) {
     setState("asking");
     setTip("Listen to the question...", "info");
     statusEl.textContent = "Listening to the question. Recording starts when it finishes.";
+<<<<<<< HEAD
     if (lead) setMood("happy", 2600);     // smiles while greeting or saying thank you
+=======
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
     say((lead ? lead + " " : "") + current.text, beginRecording);
   } else {
     beginRecording();

@@ -1,12 +1,19 @@
 {% extends "base.html" %}
 {% block title %}Analyzing · AIMIS{% endblock %}
 
+<<<<<<< HEAD
 {% from "_robot.html" import robot %}
 {% block content %}
 <div class="card processing">
   <div class="processing-bot">{{ robot("thinking") }}</div>
   <div class="spinner" id="spinner"></div>
   <h1>AIMIS Bot is reviewing your interview...</h1>
+=======
+{% block content %}
+<div class="card processing">
+  <div class="spinner" id="spinner"></div>
+  <h1>Analyzing your interview...</h1>
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
   <p id="status" class="muted">AIMIS is transcribing your answers and evaluating your interview.
     This can take up to a minute. Please don't close this page.</p>
   <p id="timer" class="muted"></p>

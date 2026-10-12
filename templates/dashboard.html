@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Dashboard · AIMIS{% endblock %}
 
+<<<<<<< HEAD
 {% from "_robot.html" import robot %}
 {% from "_icons.html" import skill_icon, ui_icon, SKILLS %}
 {% block content %}
@@ -73,6 +74,41 @@
     <span class="stat-label">Best interview</span>
     <span class="stat-value">{{ "%.0f" | format(stats.best) if stats else "–" }}{% if stats %}%{% endif %}</span>
     <span class="stat-note">{% if stats %}Latest interview: {{ "%.0f" | format(stats.latest) }}%{% else %}Your highest so far{% endif %}</span>
+=======
+{% block content %}
+{# ---- Welcome banner ---- #}
+<div class="card hero">
+  <div>
+    <h1>Hi, {{ (session.full_name or 'there').split(' ')[0] }}!</h1>
+    <p>Ready to practice? Each mock interview takes about 5–10 minutes.</p>
+  </div>
+  <a href="{{ url_for('start_interview') }}" class="btn btn-lg">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+    Start new interview
+  </a>
+</div>
+
+{# ---- Stat tiles ---- #}
+<div class="grid-3" style="margin-top:16px">
+  <div class="card stat">
+    <span class="stat-label">Interviews completed</span>
+    <span class="stat-value">{{ stats.count if stats else 0 }}</span>
+    <span class="stat-note">Scored interviews</span>
+  </div>
+  <div class="card stat">
+    <span class="stat-label">Average score</span>
+    <span class="stat-value">{{ "%.0f" | format(stats.average) if stats else "–" }}{% if stats %}%{% endif %}</span>
+    {% if stats and stats.change is not none %}
+      <span class="stat-note {{ 'good' if stats.change >= 0 else 'warn' }}">{{ '%+.0f' | format(stats.change) }} points since your first</span>
+    {% else %}
+      <span class="stat-note">Across all interviews</span>
+    {% endif %}
+  </div>
+  <div class="card stat">
+    <span class="stat-label">Best score</span>
+    <span class="stat-value">{{ "%.0f" | format(stats.best) if stats else "–" }}{% if stats %}%{% endif %}</span>
+    <span class="stat-note">{% if stats %}Latest: {{ "%.0f" | format(stats.latest) }}%{% else %}Your highest so far{% endif %}</span>
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
   </div>
 </div>
 
@@ -80,7 +116,11 @@
 {% if stats %}
 <div class="card skills-card" style="margin-top:16px">
   <div class="card-head">
+<<<<<<< HEAD
     <h2>Your interview skills</h2>
+=======
+    <h2>Your skills</h2>
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
     <span class="skills-head-right">
       {% if stats.trend %}<span class="badge {{ 'badge-good' if stats.trend == 'Improving' else 'badge-warn' if stats.trend == 'Dropping' else '' }}">{{ stats.trend }}</span>{% endif %}
       <span class="muted small">Last {{ [stats.count, 5] | min }} interview{{ 's' if stats.count != 1 }}</span>
@@ -144,11 +184,16 @@
 </div>
 {% else %}
 <div class="card empty-state" style="margin-top:16px">
+<<<<<<< HEAD
   <p>Your interview skills will appear here after your first scored interview.</p>
+=======
+  <p>Your skills will appear here after your first scored interview.</p>
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
 </div>
 {% endif %}
 
 {# ---- Sessions ---- #}
+<<<<<<< HEAD
 <div class="section-head"><h2>Interview history</h2><p class="muted">Open an interview to see your answers, scores, and feedback.</p></div>
 {% if interviews %}
   {% for i in interviews %}
@@ -156,6 +201,14 @@
       <span class="session-icon">{{ skill_icon(i.category, 22) }}</span>
       <div class="session-main">
         <p class="session-title">{{ i.category }} interview</p>
+=======
+<h2 style="margin-top:28px">Recent sessions</h2>
+{% if interviews %}
+  {% for i in interviews %}
+    <div class="card session">
+      <div>
+        <p class="session-title">{{ i.category }}</p>
+>>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
         <p class="session-meta">{{ i.started_at.strftime('%b %d, %Y · %I:%M %p') }} · {{ i.difficulty }} · {{ i.number_of_questions }} question{{ 's' if i.number_of_questions != 1 }}</p>
       </div>
       <div class="session-actions">
