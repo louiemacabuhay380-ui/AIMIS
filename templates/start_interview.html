@@ -1,29 +1,79 @@
 {% extends "base.html" %}
+{% from "_robot.html" import robot %}
+{% from "_icons.html" import skill_icon, ui_icon, SKILLS %}
+{% block title %}Start interview · AIMIS{% endblock %}
+
 {% block content %}
-<h2>Start a mock interview</h2>
-<form method="POST">
-  <label>Category:
-    <select name="category">
-      {% for c in categories %}<option>{{ c }}</option>{% endfor %}
-    </select>
-  </label><br>
-  <label>Difficulty:
-    <select name="difficulty">
-      <option>Beginner</option><option>Intermediate</option><option>Advanced</option>
-    </select>
-  </label><br>
-  <label>Number of questions:
-    <input name="number_of_questions" type="number" min="1" max="10" value="3">
-  </label><br>
+{% set picked = request.args.get('category') if request.args.get('category') in categories else categories[0] %}
+<div class="page-head">
+  <div>
+    <h1>Set up your mock interview</h1>
+    <p>Choose a soft skill, how hard the questions should be, and how many you want.</p>
+  </div>
+</div>
 
-  <p><label>
-    <input type="checkbox" name="consent" value="yes" required>
-    I agree to have my voice recorded during this interview. My recordings and answers
-    will only be used to analyze my performance and give me feedback.
-  </label></p>
+<ol class="how-steps">
+  <li><span class="step-num">1</span><span><b>Check devices</b>Make sure your microphone and camera work.</span></li>
+  <li><span class="step-num">2</span><span><b>Answer out loud</b>The interviewer asks each question; you answer by speaking.</span></li>
+  <li><span class="step-num">3</span><span><b>Get feedback</b>See your scores and tips to improve.</span></li>
+</ol>
 
-  <button type="submit">Begin</button>
-</form>
-<p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
+<div class="setup">
+  <form method="POST" class="card form setup-form">
+    <fieldset class="field">
+      <legend>1. Which skill do you want to practice?</legend>
+      <div class="pick-grid">
+        {% for c in categories %}
+          <label class="pick">
+            <input type="radio" name="category" value="{{ c }}" {{ 'checked' if c == picked }} required>
+            <span class="pick-card">
+              <span class="pick-icon">{{ skill_icon(c, 24) }}</span>
+              <span class="pick-name">{{ c }}</span>
+            </span>
+          </label>
+        {% endfor %}
+      </div>
+      <span class="field-hint">Questions are picked at random, and ones you haven't answered yet come first.</span>
+    </fieldset>
+
+    <fieldset class="field">
+      <legend>2. Difficulty</legend>
+      <div class="pill-group">
+        {% for d, hint in [("Beginner", "General questions"), ("Intermediate", "Real situations"), ("Advanced", "Harder situations")] %}
+          <label class="pill">
+            <input type="radio" name="difficulty" value="{{ d }}" {{ 'checked' if loop.first }}>
+            <span><b>{{ d }}</b><small>{{ hint }}</small></span>
+          </label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <label class="field-label">3. Number of questions
+      <input name="number_of_questions" type="number" min="1" max="10" value="3" class="num-input">
+      <span class="field-hint">1 to 10. Each answer can be up to 3 minutes.</span>
+    </label>
+
+    <label class="consent">
+      <input type="checkbox" name="consent" value="yes" required>
+      <span>I agree to have my voice recorded and my camera used during this interview. My voice
+      recordings are processed by a third-party AI service. My camera is analyzed only on this
+      device; video is never recorded or uploaded, and only the behavior scores are saved.</span>
+    </label>
+
+    <div class="btn-row">
+      <button type="submit" class="btn btn-lg">{{ ui_icon("play", 16) }} Begin interview</button>
+      <a href="{{ url_for('dashboard') }}" class="btn btn-outline btn-lg">Back</a>
+    </div>
+  </form>
+
+  <aside class="setup-bot card">
+    {{ robot("happy") }}
+    <div class="speech speech-up">Pick a skill and I'll prepare the questions. I'll read each one out loud, then listen to your answer.</div>
+    <ul class="bot-tips">
+      <li>{{ ui_icon("mic", 16) }} Use a quiet room</li>
+      <li>{{ ui_icon("camera", 16) }} Keep your face in the camera</li>
+      <li>{{ ui_icon("chat", 16) }} Answer with a real example</li>
+    </ul>
+  </aside>
+</div>
 {% endblock %}
-

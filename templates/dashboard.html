@@ -1,63 +1,188 @@
 {% extends "base.html" %}
+{% block title %}Dashboard · AIMIS{% endblock %}
+
+{% from "_robot.html" import robot %}
+{% from "_icons.html" import skill_icon, ui_icon, SKILLS %}
 {% block content %}
-<h2>Welcome, {{ session.full_name }}!</h2>
-<p><a href="{{ url_for('start_interview') }}">Start a new interview</a> |
-   <a href="{{ url_for('logout') }}">Log out</a></p>
+{# ---- Interview room banner: the AI interviewer greets the user ---- #}
+<section class="room">
+  <div class="room-bar">
+    <span class="room-live"><span class="room-dot"></span>Mock interview room</span>
+    <span class="room-bar-right">{{ ui_icon("mic", 15) }} {{ ui_icon("camera", 15) }}</span>
+  </div>
+  <div class="room-body">
+    <div class="room-text">
+      <p class="room-kicker">AI mock interview</p>
+      <h1>Hi, {{ (session.full_name or 'there').split(' ')[0] }}! Ready for your interview?</h1>
+      <p class="room-sub">AIMIS Bot asks real soft-skill interview questions out loud. You answer by speaking,
+        and you get feedback on your answer, your voice, and your body language.</p>
+      <div class="room-actions">
+        <a href="{{ url_for('start_interview') }}" class="btn btn-lg btn-light">{{ ui_icon("play", 16) }} Start mock interview</a>
+        <span class="room-note">About 5–10 minutes</span>
+      </div>
+      <ul class="room-features">
+        <li>{{ ui_icon("chat", 16) }} Questions read aloud</li>
+        <li>{{ ui_icon("mic", 16) }} Spoken answers</li>
+        <li>{{ ui_icon("camera", 16) }} Eye contact &amp; expression</li>
+        <li>{{ ui_icon("spark", 16) }} AI feedback</li>
+      </ul>
+    </div>
+    <div class="room-bot">
+      <div class="speech">"Tell me about a time you worked with a team."</div>
+      {{ robot("happy") }}
+      <span class="room-name">AIMIS Bot · Interviewer</span>
+    </div>
+  </div>
+</section>
 
-
-<h3>Your progress</h3>
-{% if stats %}
-  <p>Completed interviews: {{ stats.count }} | Average: {{ stats.average }} |
-     Best: {{ stats.best }} | Latest: {{ stats.latest }}
-     {% if stats.change is not none %} | Change since first: {{ '%+.2f'|format(stats.change) }}{% endif %}</p>
-  <div style="max-width:700px;"><canvas id="progressChart" data-chart='{{ chart|tojson }}'></canvas></div>
-
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script>
-    const chart = JSON.parse(document.getElementById("progressChart").dataset.chart);
-    new Chart(document.getElementById("progressChart"), {
-      type: "line",
-      data: {
-        labels: chart.labels,
-        datasets: [
-          { label: "Overall", data: chart.overall, borderWidth: 3 },
-          { label: "Answer quality", data: chart.quality },
-          { label: "Speech delivery", data: chart.speech, spanGaps: true }
-        ]
-      },
-      options: {
-        scales: { y: { min: 0, max: 100, title: { display: true, text: "Score" } } },
-        plugins: {
-          tooltip: { callbacks: { afterLabel: ctx => "Category: " + chart.categories[ctx.dataIndex] } }
-        }
-      }
-    });
-  </script>
-{% else %}
-  <p>Complete an interview to see your progress here.</p>
-{% endif %}
-<h3>Your interviews</h3>
-{% if interviews %}
-<table border="1" cellpadding="6">
-  <tr><th>Date</th><th>Category</th><th>Difficulty</th><th>Questions</th><th>Status</th><th></th></tr>
-  {% for i in interviews %}
-  <tr>
-    <td>{{ i.started_at.strftime('%b %d, %Y %I:%M %p') }}</td>
-    <td>{{ i.category }}</td>
-    <td>{{ i.difficulty }}</td>
-    <td>{{ i.number_of_questions }}</td>
-    <td>{{ i.status }}</td>
-    <td>
-      {% if i.status == 'in_progress' %}
-        <a href="{{ url_for('interview', interview_id=i.interview_id) }}">Continue</a>
-      {% else %}
-        <a href="{{ url_for('interview_summary', interview_id=i.interview_id) }}">View</a>
-      {% endif %}
-    </td>
-  </tr>
+{# ---- Practice a skill: pick a category to start ---- #}
+<div class="section-head">
+  <h2>Practice a skill</h2>
+  <p class="muted">Pick a soft skill and the interviewer will prepare questions for it.</p>
+</div>
+<div class="skill-grid">
+  {% for name, desc in SKILLS %}
+    <a class="skill-tile" href="{{ url_for('start_interview', category=name) }}">
+      <span class="skill-tile-icon">{{ skill_icon(name) }}</span>
+      <span class="skill-tile-name">{{ name }}</span>
+      <span class="skill-tile-desc">{{ desc }}</span>
+    </a>
   {% endfor %}
-</table>
+</div>
+
+{# ---- Progress tiles ---- #}
+<div class="grid-3 progress-tiles">
+  <div class="card stat">
+    <span class="stat-icon">{{ ui_icon("chat", 20) }}</span>
+    <span class="stat-label">Interviews done</span>
+    <span class="stat-value">{{ stats.count if stats else 0 }}</span>
+    <span class="stat-note">Mock interviews with feedback</span>
+  </div>
+  <div class="card stat">
+    <span class="stat-icon">{{ ui_icon("target", 20) }}</span>
+    <span class="stat-label">Average interview score</span>
+    <span class="stat-value">{{ "%.0f" | format(stats.average) if stats else "–" }}{% if stats %}%{% endif %}</span>
+    {% if stats and stats.change is not none %}
+      <span class="stat-note {{ 'good' if stats.change >= 0 else 'warn' }}">{{ '%+.0f' | format(stats.change) }} points since your first interview</span>
+    {% else %}
+      <span class="stat-note">Across all your interviews</span>
+    {% endif %}
+  </div>
+  <div class="card stat">
+    <span class="stat-icon">{{ ui_icon("trophy", 20) }}</span>
+    <span class="stat-label">Best interview</span>
+    <span class="stat-value">{{ "%.0f" | format(stats.best) if stats else "–" }}{% if stats %}%{% endif %}</span>
+    <span class="stat-note">{% if stats %}Latest interview: {{ "%.0f" | format(stats.latest) }}%{% else %}Your highest so far{% endif %}</span>
+  </div>
+</div>
+
+{# ---- Skills rings ---- #}
+{% if stats %}
+<div class="card skills-card" style="margin-top:16px">
+  <div class="card-head">
+    <h2>Your interview skills</h2>
+    <span class="skills-head-right">
+      {% if stats.trend %}<span class="badge {{ 'badge-good' if stats.trend == 'Improving' else 'badge-warn' if stats.trend == 'Dropping' else '' }}">{{ stats.trend }}</span>{% endif %}
+      <span class="muted small">Last {{ [stats.count, 5] | min }} interview{{ 's' if stats.count != 1 }}</span>
+    </span>
+  </div>
+
+  {% if skills %}
+  <div class="skills-body">
+    <div class="rings-wrap">
+      {# Each ring is 3/4 of a circle; its filled part shows the score (0-100) #}
+      <svg class="rings" viewBox="0 0 300 300" role="img"
+           aria-label="Skill scores: {% for s in skills %}{{ s.name }} {{ s.value }}%{{ ', ' if not loop.last }}{% endfor %}">
+        {% for s in skills %}
+          {% set r = 130 - loop.index0 * 19 %}
+          {% set c = 2 * 3.14159 * r %}
+          {% set track = c * 0.75 %}
+          {% set fill = track * s.value / 100 %}
+          {% set level = 'good' if s.value >= 75 else 'ok' if s.value >= 50 else 'low' %}
+          <circle class="ring-track" cx="150" cy="150" r="{{ r }}"
+                  stroke-dasharray="{{ '%.1f' | format(track) }} {{ '%.1f' | format(c) }}"
+                  transform="rotate(-90 150 150)"/>
+          {% if s.value > 0 %}
+          <circle class="ring-fill ring-{{ level }}" cx="150" cy="150" r="{{ r }}"
+                  stroke-dasharray="{{ '%.1f' | format(fill) }} {{ '%.1f' | format(c) }}"
+                  transform="rotate(-90 150 150)">
+            <title>{{ s.name }}: {{ s.value }}%</title>
+          </circle>
+          {% endif %}
+          <text class="ring-label" x="142" y="{{ 150 - r + 4 }}" text-anchor="end">{{ s.name }} · {{ s.value }}%</text>
+        {% endfor %}
+      </svg>
+      <div class="ring-legend" aria-label="Color legend">
+        <span><i class="dot ring-good"></i>Strong (75 and up)</span>
+        <span><i class="dot ring-ok"></i>Okay (50 to 74)</span>
+        <span><i class="dot ring-low"></i>Needs work (below 50)</span>
+      </div>
+    </div>
+
+    <div class="skills-side">
+      <ul class="skill-list">
+        {% for s in skills %}
+          {% set level = 'good' if s.value >= 75 else 'ok' if s.value >= 50 else 'low' %}
+          <li>
+            <span><i class="dot ring-{{ level }}"></i>{{ s.name }}</span>
+            <span class="skill-level">{{ 'Strong' if level == 'good' else 'Okay' if level == 'ok' else 'Needs work' }} · <b>{{ s.value }}%</b></span>
+          </li>
+        {% endfor %}
+      </ul>
+
+      {% if focus %}
+        <div class="focus-box">
+          <p class="focus-title">Focus next on: <b>{{ focus.name }}</b> ({{ focus.value }}%)</p>
+          <p class="muted">{{ focus.tip }}</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+    <p class="muted">Skill details will appear after your next scored interview.</p>
+  {% endif %}
+</div>
 {% else %}
-<p>No interviews yet.</p>
+<div class="card empty-state" style="margin-top:16px">
+  <p>Your interview skills will appear here after your first scored interview.</p>
+</div>
+{% endif %}
+
+{# ---- Sessions ---- #}
+<div class="section-head"><h2>Interview history</h2><p class="muted">Open an interview to see your answers, scores, and feedback.</p></div>
+{% if interviews %}
+  {% for i in interviews %}
+    <div class="card session">
+      <span class="session-icon">{{ skill_icon(i.category, 22) }}</span>
+      <div class="session-main">
+        <p class="session-title">{{ i.category }} interview</p>
+        <p class="session-meta">{{ i.started_at.strftime('%b %d, %Y · %I:%M %p') }} · {{ i.difficulty }} · {{ i.number_of_questions }} question{{ 's' if i.number_of_questions != 1 }}</p>
+      </div>
+      <div class="session-actions">
+        {% if i.status == 'in_progress' %}
+          <span class="badge badge-warn">Unfinished</span>
+          <a href="{{ url_for('interview', interview_id=i.interview_id) }}" class="btn btn-sm">Continue</a>
+          <form method="POST" action="{{ url_for('cancel_interview', interview_id=i.interview_id) }}"
+                onsubmit="return confirm('Cancel this interview? Any answers you recorded for it will be deleted.');">
+            <button type="submit" class="btn btn-sm btn-outline">Cancel</button>
+          </form>
+        {% elif i.status == 'completed' %}
+          {% if i.evaluation_id and i.overall_score is not none %}
+            <span class="badge badge-good">Score: {{ "%.0f" | format(i.overall_score) }}%</span>
+          {% else %}
+            <span class="badge badge-warn">Not scored yet</span>
+          {% endif %}
+          <a href="{{ url_for('interview_summary', interview_id=i.interview_id) }}" class="btn btn-sm">View results</a>
+        {% else %}
+          <span class="badge">Cancelled</span>
+        {% endif %}
+      </div>
+    </div>
+  {% endfor %}
+{% else %}
+  <div class="card empty-state">
+    <p><b>No interviews yet.</b><br>Start your first mock interview to get feedback on your answers, voice, and body language.</p>
+    <a href="{{ url_for('start_interview') }}" class="btn">Start my first interview</a>
+  </div>
 {% endif %}
 {% endblock %}

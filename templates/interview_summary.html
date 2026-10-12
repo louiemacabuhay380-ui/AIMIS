@@ -1,44 +1,188 @@
 {% extends "base.html" %}
+{% block title %}Interview results · AIMIS{% endblock %}
+
+{# Average of a column across answers, ignoring empty values #}
+{% macro avg(items, key, fmt="%.0f") -%}
+  {%- set vals = items | map(attribute=key) | select("number") | list -%}
+  {%- if vals -%}{{ fmt | format((vals | sum) / (vals | length)) }}{%- else -%}–{%- endif -%}
+{%- endmacro %}
+
+{# Sum of a column across answers, ignoring empty values #}
+{% macro total(items, key) -%}
+  {{- items | map(attribute=key) | select("number") | sum -}}
+{%- endmacro %}
+
+{# Format one number, or show a dash if it's empty #}
+{% macro num(value, fmt="%.0f") -%}
+  {%- if value is number -%}{{ fmt | format(value) }}{%- else -%}–{%- endif -%}
+{%- endmacro %}
+
+{% from "_robot.html" import robot %}
 {% block content %}
-<h2>Interview summary</h2>
-<p>{{ iv.category }}, {{ iv.difficulty }}, status: {{ iv.status }}</p>
+<div class="page-head">
+  <div>
+    <h1>Your Interview Report</h1>
+    <p>{{ iv.category }}, {{ iv.difficulty }}{% if iv.completed_at %}, {{ iv.completed_at.strftime('%b %d, %Y') }}{% endif %}</p>
+  </div>
+  {% if evaluation and evaluation.overall_score is number %}
+    <span class="badge badge-lg">Overall: {{ num(evaluation.overall_score) }}%</span>
+  {% endif %}
+</div>
 
 {% if evaluation %}
-  <h3>Overall score: {{ evaluation.overall_score }} / 100</h3>
-  <p>Answer quality: {{ evaluation.response_quality_score }}
-    {% if evaluation.speech_performance_score is not none %}
-      | Speech delivery: {{ evaluation.speech_performance_score }}
-    {% endif %}</p>
-  <form method="POST" action="{{ url_for('retry_evaluation', interview_id=iv.interview_id) }}">
-    <button type="submit">Run AI evaluation</button>
-  </form>
+  {# ---- Score bars ---- #}
+  <div class="card">
+    {% set bars = [("Response Quality", evaluation.response_quality_score),
+                   ("Speech Performance", evaluation.speech_performance_score),
+                   ("Behavioral", evaluation.behavioral_score)] %}
+    {% for label, value in bars if value is number %}
+      {% set bar_style = "width: " ~ value ~ "%" %}
+      <div class="score-row">
+        <div class="label-line"><span>{{ label }}</span><span>{{ num(value) }}%</span></div>
+        <div class="bar"><span style="{{ bar_style }}"></span></div>
+      </div>
+    {% endfor %}
+    <details class="help">
+      <summary>How are these scores calculated?</summary>
+      <ul>
+        <li><b>Response Quality:</b> the AI rates each answer's relevance, clarity, completeness (situation, action, result), and grammar from 0 to 100, then averages them.</li>
+        <li><b>Speech Performance:</b> the average of fluency, speech clarity, and confidence. Confidence is measured from your pauses, tone, volume steadiness, and filler words.</li>
+        <li><b>Behavioral:</b> the average of eye contact, facial expression, and gestures, measured by your camera on your own device.</li>
+        <li><b>Overall:</b> 60% Response Quality + 25% Speech Performance + 15% Behavioral. Missing parts are left out.</li>
+      </ul>
+    </details>
+  </div>
+{% elif iv.status == 'completed' %}
+  <div class="card notice">
+    <h2>This interview hasn't been scored yet</h2>
+    <p class="muted" style="margin-bottom:12px">Your answers are saved. Run the AI evaluation to get your scores and feedback.</p>
+    <form method="POST" action="{{ url_for('retry_evaluation', interview_id=iv.interview_id) }}">
+      <button type="submit" class="btn">Run AI evaluation</button>
+    </form>
+  </div>
 {% endif %}
 
-{% for a in answers %}
-  <h4>Q{{ a.question_order }}. {{ a.question_text }}</h4>
-  <p>{{ a.transcript or "(no answer)" }}</p>  {% if a.audio_path %}
-    <audio controls src="{{ url_for('audio_file', filename=a.audio_path.split('/')[-1]) }}"></audio>
-      {% if a.word_count is not none %}
-    <p><small>Words: {{ a.word_count }} | Vocabulary diversity: {{ a.vocabulary_diversity }}% |
-      Keywords ({{ a.keyword_count }}): {{ a.keywords_found or "none" }}</small></p>
-  {% endif %}
-  {% endif %}
-  {% if a.fluency_score is not none %}
-    <p><small>Speaking rate: {{ a.speaking_rate }} words/min | Filler words: {{ a.filler_word_count }} |
-      Pauses: {{ a.pause_count }} | Fluency: {{ a.fluency_score }}</small></p>
-  {% endif %}
-  {% if a.relevance_score is not none %}
-    <p><small>Relevance: {{ a.relevance_score }} | Clarity: {{ a.clarity_score }} |
-      Completeness: {{ a.completeness_score }} | Grammar: {{ a.grammar_score }}</small></p>
-  {% endif %}
-{% endfor %}
+{# ---- Speech and behavior totals across all answers ---- #}
+{% set spoken  = answers | selectattr("fluency_score", "number") | list %}
+{% set voiced  = answers | selectattr("confidence_score", "number") | list %}
+{% set clear   = answers | selectattr("speech_clarity", "number") | list %}
+{% set watched = answers | selectattr("eye_contact_score", "number") | list %}
+{% set scored  = answers | selectattr("relevance_score", "number") | list %}
 
+{% if spoken or watched %}
+<div class="grid-2" style="margin-top:14px">
+  <div class="card">
+    <h2>Speech Analysis</h2>
+    {% if spoken %}
+      <div class="kv"><span>Speaking pace</span><span>{{ avg(spoken, "speaking_rate") }} WPM</span></div>
+      <div class="kv"><span>Filler words</span><span class="warn">{{ total(spoken, "filler_word_count") }}</span></div>
+      <div class="kv"><span>Long pauses</span><span class="warn">{{ total(spoken, "pause_count") }}</span></div>
+      <div class="kv"><span>Fluency</span><span class="good">{{ avg(spoken, "fluency_score") }}%</span></div>
+    {% endif %}
+    {% if clear %}
+      <div class="kv"><span>Speech clarity</span><span class="good">{{ avg(clear, "speech_clarity") }}%</span></div>
+    {% endif %}
+    {% if voiced %}
+      <div class="kv"><span>Confidence</span><span class="good">{{ avg(voiced, "confidence_score") }}%</span></div>
+      <div class="kv"><span>Tone (pitch variation)</span><span>{{ avg(voiced, "pitch_variation", "%.1f") }} semitones</span></div>
+      <div class="kv"><span>Speaking time</span><span>{{ avg(voiced, "speech_ratio") }}%</span></div>
+    {% endif %}
+    {% if not spoken and not voiced %}<p class="muted">No speech data yet.</p>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Behavioral Analysis</h2>
+    {% if watched %}
+      <div class="kv"><span>Eye contact</span><span class="good">{{ avg(watched, "eye_contact_score") }}%</span></div>
+      <div class="kv"><span>Face visibility</span><span class="good">{{ avg(watched, "face_visibility_score") }}%</span></div>
+      <div class="kv"><span>Facial expression</span><span class="good">{{ avg(watched, "facial_expression_score") }}%</span></div>
+      <div class="kv"><span>Gestures</span><span class="good">{{ avg(watched, "gesture_score") }}%</span></div>
+      <div class="kv"><span>Time smiling</span><span>{{ avg(watched, "smile_ratio") }}%</span></div>
+    {% else %}
+      <p class="muted">No camera data for this interview.</p>
+    {% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if scored %}
+<div class="card" style="margin-top:14px">
+  <h2>Answer Analysis</h2>
+  {% for label, key in [("Relevance", "relevance_score"), ("Answer clarity", "clarity_score"),
+                        ("Completeness", "completeness_score"), ("Grammar", "grammar_score")] %}
+    <div class="kv"><span>{{ label }}</span><span class="good">{{ avg(scored, key) }}%</span></div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{# ---- AI feedback ---- #}
 {% if fb %}
-  <h3>Feedback</h3>
-  <h4>Strengths</h4><p>{{ fb.strengths }}</p>
-  <h4>Areas to improve</h4><p>{{ fb.areas_to_improve }}</p>
-  <h4>Recommendations</h4><p>{{ fb.recommendations }}</p>
+<div class="card" style="margin-top:14px">
+  <div class="fb-head">
+    {{ robot("happy", "robot-sm") }}
+    <div><h2>Feedback from your interviewer</h2><p class="muted">AIMIS Bot reviewed all your answers.</p></div>
+  </div>
+  <div class="grid-2" style="margin-top:0">
+    <div class="fb-box fb-good"><h3>Strengths</h3><p>{{ fb.strengths }}</p></div>
+    <div class="fb-box fb-improve"><h3>Areas to Improve</h3><p>{{ fb.areas_to_improve }}</p></div>
+  </div>
+  <div class="fb-box fb-tips"><h3>Recommendations</h3><p>{{ fb.recommendations }}</p></div>
+</div>
 {% endif %}
 
-<p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
+{# ---- Each question and answer ---- #}
+<div class="card" style="margin-top:14px">
+  <h2>Your Answers</h2>
+  {% for a in answers %}
+    <div class="answer">
+      <h3>Q{{ a.question_order }}. {{ a.question_text }}</h3>
+      <p class="transcript">{{ a.transcript or "(no answer)" }}</p>
+
+      {% if a.audio_path %}
+        <audio controls preload="none" src="{{ url_for('audio_file', filename=a.audio_path.split('/')[-1]) }}"></audio>
+      {% endif %}
+
+      <div class="chips">
+        {% if a.relevance_score is number %}
+          <span>Relevance <b>{{ num(a.relevance_score) }}</b></span>
+          <span>Answer clarity <b>{{ num(a.clarity_score) }}</b></span>
+          <span>Completeness <b>{{ num(a.completeness_score) }}</b></span>
+          <span>Grammar <b>{{ num(a.grammar_score) }}</b></span>
+        {% endif %}
+        {% if a.fluency_score is number %}
+          <span>Pace <b>{{ num(a.speaking_rate) }} WPM</b></span>
+          <span>Fillers <b>{{ num(a.filler_word_count) }}</b></span>
+          <span>Pauses <b>{{ num(a.pause_count) }}</b></span>
+          <span>Fluency <b>{{ num(a.fluency_score) }}</b></span>
+        {% endif %}
+        {% if a.speech_clarity is number %}
+          <span>Speech clarity <b>{{ num(a.speech_clarity) }}</b></span>
+        {% endif %}
+        {% if a.confidence_score is number %}
+          <span>Confidence <b>{{ num(a.confidence_score) }}</b></span>
+          <span>Tone <b>{{ num(a.pitch_variation, "%.2f") }} semitones</b></span>
+          <span>Volume variation <b>{{ num(a.volume_variation, "%.2f") }} dB</b></span>
+          <span>Speaking time <b>{{ num(a.speech_ratio) }}%</b></span>
+          <span>Pauses <b>{{ num(a.total_pause_time, "%.2f") }}s total, longest {{ num(a.longest_pause, "%.2f") }}s</b></span>
+        {% endif %}
+        {% if a.eye_contact_score is number %}
+          <span>Eye contact <b>{{ num(a.eye_contact_score) }}</b></span>
+          <span>Face visible <b>{{ num(a.face_visibility_score) }}%</b></span>
+          <span>Expression <b>{{ num(a.facial_expression_score) }}</b> (smiling {{ num(a.smile_ratio) }}%)</span>
+          <span>Gestures <b>{{ num(a.gesture_score) }}</b> (moving {{ num(a.gesture_ratio) }}%)</span>
+        {% endif %}
+        {% if a.word_count is number %}
+          <span>Words <b>{{ a.word_count }}</b></span>
+          <span>Vocabulary <b>{{ num(a.vocabulary_diversity) }}%</b></span>
+          <span>Keywords <b>{{ a.keywords_found or "none" }}</b></span>
+        {% endif %}
+      </div>
+    </div>
+  {% endfor %}
+</div>
+
+<div class="btn-row" style="margin-top:18px">
+  <a href="{{ url_for('dashboard') }}" class="btn btn-outline">Back to dashboard</a>
+  <a href="{{ url_for('start_interview') }}" class="btn">Start another interview</a>
+</div>
 {% endblock %}

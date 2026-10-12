@@ -1,30 +1,64 @@
 {% extends "base.html" %}
+{% block title %}Device check · AIMIS{% endblock %}
+
 {% block content %}
-<h2>Check your devices</h2>
-<p>Before your {{ iv.category }} interview ({{ iv.difficulty }}) starts, let's make sure your devices work.</p>
-
-<h3>Microphone</h3>
-<button id="micBtn">Test microphone</button>
-<p id="micStatus">Click the button, allow microphone access, then say a few words.</p>
-<div style="width:300px; height:16px; border:1px solid #888;">
-  <div id="micLevel" style="height:100%; width:0; background:#2a9d4a;"></div>
+<div class="page-head">
+  <div>
+    <h1>Check your devices</h1>
+    <p>Before your {{ iv.category }} interview ({{ iv.difficulty }}) starts, let's make sure your microphone and camera work.</p>
+  </div>
 </div>
 
-<div id="cameraSection" hidden>
-  <h3>Camera</h3>
-  <button id="camBtn">Test camera</button>
-  <p id="camStatus">Click the button and allow camera access.</p>
-  <video id="camPreview" width="320" autoplay muted playsinline hidden></video>
+<div class="grid-2">
+  <!-- Microphone -->
+  <div class="card device-card" id="micCard">
+    <div class="device-head">
+      <h2>Microphone</h2>
+      <span class="device-pill" id="micPill">
+        <svg class="pill-check" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+             stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+        <span id="micPillText">Not tested</span>
+      </span>
+    </div>
+    <p id="micStatus" class="muted">Click the button, allow microphone access, then say a few words.</p>
+    <div class="level" aria-hidden="true"><div id="micLevel"></div></div>
+    <div class="level-scale"><span>Quiet</span><span>Good</span><span>Loud</span></div>
+    <button id="micBtn" type="button" class="btn">Test microphone</button>
+  </div>
+
+  <!-- Camera -->
+  <div class="card device-card" id="cameraSection" hidden>
+    <div class="device-head">
+      <h2>Camera</h2>
+      <span class="device-pill" id="camPill">
+        <svg class="pill-check" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+             stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+        <span id="camPillText">Not tested</span>
+      </span>
+    </div>
+    <p id="camStatus" class="muted">Click the button and allow camera access.</p>
+    <div class="cam-box">
+      <video id="camPreview" class="cam-preview" autoplay muted playsinline hidden></video>
+      <div class="cam-placeholder" id="camPlaceholder">Camera preview</div>
+    </div>
+    <button id="camBtn" type="button" class="btn">Test camera</button>
+  </div>
 </div>
 
-<form method="POST" style="margin-top:16px;">
-  <button id="continueBtn" type="submit" disabled>Continue to interview</button>
+<div class="ready-banner" id="readyBanner" hidden>
+  <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="3"
+       stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+  Everything is ready. You can start your interview.
+</div>
+
+<form method="POST" class="btn-row" style="margin-top:18px">
+  <button id="continueBtn" type="submit" class="btn btn-lg" disabled>Continue to interview</button>
+  <a href="{{ url_for('dashboard') }}" class="btn btn-outline btn-lg">Back to dashboard</a>
 </form>
-<p><a href="{{ url_for('dashboard') }}">Back to dashboard</a></p>
 
 <script>
-// Set to true once video-based behavioral analysis is added
-const REQUIRE_CAMERA = false;
+// The camera is used for behavioral analysis (eye contact, expressions, gestures)
+const REQUIRE_CAMERA = true;
 
 const micBtn = document.getElementById("micBtn");
 const micStatus = document.getElementById("micStatus");
@@ -38,9 +72,19 @@ let camOk = !REQUIRE_CAMERA;
 
 if (REQUIRE_CAMERA) document.getElementById("cameraSection").hidden = false;
 
+// state: "idle" | "testing" | "ready" | "error"
+function setDevice(prefix, state, text) {
+  const card = document.getElementById(prefix === "mic" ? "micCard" : "cameraSection");
+  card.classList.remove("is-testing", "is-ready", "is-error");
+  if (state !== "idle") card.classList.add("is-" + state);
+  document.getElementById(prefix + "PillText").textContent = text;
+}
+
 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
   micStatus.textContent = "Your browser doesn't support microphone access. Please use Google Chrome or Microsoft Edge.";
+  setDevice("mic", "error", "Not supported");
   micBtn.disabled = true;
+  camBtn.disabled = true;
 }
 
 function explain(err, device) {
@@ -54,7 +98,9 @@ function explain(err, device) {
 }
 
 function updateContinue() {
-  continueBtn.disabled = !(micOk && camOk);
+  const ready = micOk && camOk;
+  continueBtn.disabled = !ready;
+  document.getElementById("readyBanner").hidden = !ready;
 }
 
 micBtn.onclick = async () => {
@@ -64,12 +110,14 @@ micBtn.onclick = async () => {
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (err) {
     micStatus.textContent = explain(err, "microphone");
+    setDevice("mic", "error", "Problem");
     micBtn.disabled = false;
     micBtn.textContent = "Try again";
     return;
   }
 
-  micStatus.textContent = "Microphone connected. Say a few words...";
+  setDevice("mic", "testing", "Listening...");
+  micStatus.textContent = "Microphone connected. Say a few words, like \"Hello, I'm ready for my interview.\"";
   const ctx = new AudioContext();
   const analyser = ctx.createAnalyser();
   analyser.fftSize = 512;
@@ -88,11 +136,14 @@ micBtn.onclick = async () => {
     if (level > 15) loudFrames++;
     if (!micOk && loudFrames > 20) {
       micOk = true;
-      micStatus.textContent = "✔ Your microphone is working.";
+      setDevice("mic", "ready", "Ready");
+      micStatus.textContent = "Your microphone is working. The green bar moves when you speak.";
+      micBtn.hidden = true;
       updateContinue();
     }
     if (!micOk && Date.now() - started > 10000) {
       micStatus.textContent = "We couldn't hear anything. Check that your microphone isn't muted and is the one selected in your browser, then click Try again.";
+      setDevice("mic", "error", "No sound");
       stream.getTracks().forEach(t => t.stop());
       ctx.close();
       micLevel.style.width = "0";
@@ -100,20 +151,27 @@ micBtn.onclick = async () => {
       micBtn.textContent = "Try again";
       return;
     }
-    requestAnimationFrame(tick);
+    requestAnimationFrame(tick);   // keeps the bar moving so the user can see it working
   })();
 };
 
 camBtn.onclick = async () => {
+  camBtn.disabled = true;
+  setDevice("cam", "testing", "Starting...");
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true });
     camPreview.srcObject = stream;
     camPreview.hidden = false;
+    document.getElementById("camPlaceholder").hidden = true;
     camOk = true;
-    camStatus.textContent = "✔ Your camera is working. Make sure your face is visible and well lit.";
+    setDevice("cam", "ready", "Ready");
+    camStatus.textContent = "Your camera is working. Make sure your face is visible and well lit.";
+    camBtn.hidden = true;
     updateContinue();
   } catch (err) {
     camStatus.textContent = explain(err, "camera");
+    setDevice("cam", "error", "Problem");
+    camBtn.disabled = false;
     camBtn.textContent = "Try again";
   }
 };

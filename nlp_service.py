@@ -5,7 +5,7 @@ from nltk.tokenize import word_tokenize, sent_tokenize
 
 _stemmer = PorterStemmer()
 _STOPWORDS = set(stopwords.words("english"))
-FILLERS = {"um", "uh", "uhm", "er", "erm", "ah", "hmm"}
+FILLERS = {"um", "uh", "uhm", "er", "erm", "ah", "hmm", "eh", "ano", "parang", "yung"}
 
 # Words that signal a structured answer (STAR: situation, task, action, result)
 STAR_KEYWORDS = ["situation", "task", "goal", "challenge", "action", "decide", "plan",

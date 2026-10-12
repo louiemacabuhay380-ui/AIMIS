@@ -1,11 +1,40 @@
 {% extends "base.html" %}
+{% block title %}Register · AIMIS</div>
+{% endblock %}
+
+{% from "_robot.html" import robot %}
 {% block content %}
-<h2>Create an account</h2>
-<form method="POST">
-  <input name="full_name" placeholder="Full name" required><br>
-  <input name="email" type="email" placeholder="Email" required><br>
-  <input name="password" type="password" placeholder="Password (8+ characters)" required><br>
-  <button type="submit">Register</button>
-</form>
-<p>Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
+<div class="auth-wrap">
+<section class="auth-hero">
+  <p class="room-kicker">AI mock interview</p>
+  <h2>Practice job interviews with an AI interviewer</h2>
+  <div class="auth-bot">{{ robot("happy") }}</div>
+  <div class="mini-chat" aria-hidden="true">
+    <div class="mini ai"><b>AIMIS Bot</b>Tell me about a time you worked with a team.</div>
+    <div class="mini you"><b>You</b>In our capstone project, I organized our tasks...</div>
+    <div class="mini ai"><b>Feedback</b>Good example! Next time, add the result at the end.</div>
+  </div>
+</section>
+<div class="auth-card card">
+  <img class="auth-logo" src="{{ url_for('static', filename='img/aimis-logo.png') }}" alt=""
+       onerror="this.style.display='none'">
+  <h1>Create an account</h1>
+  <p class="muted">Practice soft-skills interviews with AI feedback.</p>
+
+  <form method="POST" class="form">
+    <label>Full name
+      <input name="full_name" placeholder="Juan Dela Cruz" required>
+    </label>
+    <label>Email
+      <input name="email" type="email" placeholder="you@example.com" required>
+    </label>
+    <label>Password
+      <input name="password" type="password" placeholder="At least 8 characters" minlength="8" required>
+    </label>
+    <button type="submit" class="btn btn-block">Register</button>
+  </form>
+
+  <p class="muted auth-switch">Already have an account? <a href="{{ url_for('login') }}">Log in</a></p>
+</div>
+</div>
 {% endblock %}

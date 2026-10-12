@@ -1,10 +1,143 @@
 <!DOCTYPE html>
-<html>
-<head><title>AIMIS</title></head>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}AIMIS{% endblock %}</title>
+
+  <!-- Apply the saved theme before the page draws, so it never flashes the wrong colors -->
+  <script>
+    (function () {
+      var saved = null;
+      try { saved = localStorage.getItem("aimis-theme"); } catch (e) {}
+      var prefersDark = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+      document.documentElement.setAttribute("data-theme", saved || (prefersDark ? "dark" : "light"));
+    })();
+  </script>
+
+  <link rel="icon" id="favicon" href="{{ url_for('static', filename='img/aimis-mark.png') }}">
+  <script>
+    // Makes a copy of a logo where only the dark navy parts become white.
+    // Colored parts (like the blue chat bubble) keep their original color.
+    window.aimisLightLogo = function (src, done) {
+      var img = new Image();
+      img.onload = function () {
+        try {
+          var c = document.createElement("canvas");
+          c.width = img.naturalWidth; c.height = img.naturalHeight;
+          var g = c.getContext("2d");
+          g.drawImage(img, 0, 0);
+          var data = g.getImageData(0, 0, c.width, c.height), px = data.data;
+          for (var i = 0; i < px.length; i += 4) {
+            if (px[i + 3] === 0) continue;                      // transparent
+            var max = Math.max(px[i], px[i + 1], px[i + 2]), min = Math.min(px[i], px[i + 1], px[i + 2]);
+            var lightness = (max + min) / 510;
+            if (lightness < 0.33) { px[i] = px[i + 1] = px[i + 2] = 255; }   // dark lines become white
+          }
+          g.putImageData(data, 0, 0);
+          done(c.toDataURL("image/png"));
+        } catch (e) {}
+      };
+      img.src = src;
+    };
+
+    // Browser tab icon: in dark mode on the computer, use the light version so it shows on dark tab bars
+    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      aimisLightLogo("{{ url_for('static', filename='img/aimis-mark.png') }}", function (url) {
+        document.getElementById("favicon").href = url;
+      });
+    }
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
 <body>
-  {% with messages = get_flashed_messages() %}
-    {% for m in messages %}<p style="color:#c00">{{ m }}</p>{% endfor %}
-  {% endwith %}
-  {% block content %}{% endblock %}
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a href="{{ url_for('dashboard') if session.get('user_id') else url_for('login') }}" class="brand">
+        <span class="brand-logo">
+          <img src="{{ url_for('static', filename='img/aimis-mark.png') }}" alt=""
+               onerror="this.style.display='none'">
+        </span>
+        <span class="brand-text"><span class="brand-name">AIMIS</span><span class="brand-tag">AI Mock Interview</span></span>
+      </a>
+
+      <nav class="site-nav">
+        {% if session.get('user_id') %}
+          <a href="{{ url_for('dashboard') }}"
+             class="nav-link {{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a>
+        {% endif %}
+
+        <!-- Theme switch: left = light, right = dark -->
+        <button type="button" id="themeToggle" class="theme-switch" role="switch" aria-checked="false"
+                aria-label="Dark mode" title="Switch between light and dark mode">
+          <svg class="ts-icon ts-sun" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="12" cy="12" r="4"/>
+            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
+          </svg>
+          <span class="ts-track" aria-hidden="true"><span class="ts-knob"></span></span>
+          <svg class="ts-icon ts-moon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
+          </svg>
+        </button>
+
+        {% if session.get('user_id') %}
+          <span class="user-avatar" title="{{ session.full_name }}">{{ (session.full_name or 'U')[0] | upper }}</span>
+          <a href="{{ url_for('logout') }}" class="nav-link">Log out</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <main class="container {% block main_class %}{% endblock %}">
+    {% with messages = get_flashed_messages() %}
+      {% for m in messages %}
+        <div class="flash" role="status">
+          <span>{{ m }}</span>
+          <button type="button" class="flash-close" aria-label="Dismiss" onclick="this.parentElement.remove()">×</button>
+        </div>
+      {% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <script>
+    (function () {
+      var btn = document.getElementById("themeToggle");
+      function sync() {
+        var dark = document.documentElement.getAttribute("data-theme") === "dark";
+        btn.setAttribute("aria-checked", dark ? "true" : "false");
+      }
+      var lightCache = {};
+      function syncLogos() {
+        var dark = document.documentElement.getAttribute("data-theme") === "dark";
+        document.querySelectorAll("img.auth-logo").forEach(function (img) {
+          var original = img.getAttribute("data-original") || img.getAttribute("src");
+          img.setAttribute("data-original", original);
+          if (!dark) { img.src = original; return; }
+          if (lightCache[original]) { img.src = lightCache[original]; return; }
+          aimisLightLogo(original, function (url) {
+            lightCache[original] = url;
+            if (document.documentElement.getAttribute("data-theme") === "dark") img.src = url;
+          });
+        });
+      }
+      syncLogos();
+      window.addEventListener("themechange", syncLogos);
+
+      btn.addEventListener("click", function () {
+        var next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        try { localStorage.setItem("aimis-theme", next); } catch (e) {}
+        sync();
+        window.dispatchEvent(new CustomEvent("themechange", { detail: next }));   // lets charts recolor
+      });
+      sync();
+    })();
+  </script>
 </body>
 </html>

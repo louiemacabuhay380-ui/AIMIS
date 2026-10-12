@@ -1,0 +1,58 @@
+{# The AIMIS Bot mascot. mood: happy | neutral | listening | thinking | concerned
+   Put defs=true on the first robot of a page (it holds the shared colors). #}
+{% macro robot(mood="happy", cls="", defs=true) -%}
+<span class="mascot" data-mood="{{ mood }}">
+<svg class="robot {{ cls }}" viewBox="0 0 220 240" aria-hidden="true">
+        {% if defs %}<defs>
+          <radialGradient id="rbShell" cx="38%" cy="28%" r="80%">
+            <stop offset="0" stop-color="#ffffff"/><stop offset="0.65" stop-color="#e9eef3"/><stop offset="1" stop-color="#c3ccd6"/>
+          </radialGradient>
+          <linearGradient id="rbVisor" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#1a2836"/><stop offset="1" stop-color="#05090e"/>
+          </linearGradient>
+          <filter id="rbGlow" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="2.6" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>{% endif %}
+
+        <!-- body: shoulders, neck joint and chest light -->
+        <path d="M46 240 C46 204 70 188 110 188 C150 188 174 204 174 240 Z" class="rb-shell"/>
+        <circle cx="40" cy="218" r="22" class="rb-shell"/>
+        <circle cx="180" cy="218" r="22" class="rb-shell"/>
+        <path d="M58 205 Q64 214 62 228 M162 205 Q156 214 158 228" class="rb-joint-line"/>
+        <rect x="88" y="166" width="44" height="28" rx="10" class="rb-neck"/>
+        <circle cx="110" cy="220" r="12" class="rb-core-ring"/>
+        <circle cx="110" cy="220" r="7" class="rb-core" filter="url(#rbGlow)"/>
+
+        <g class="rb-headgroup">
+          <!-- ear pods with glowing rings -->
+          <ellipse cx="30" cy="104" rx="17" ry="27" class="rb-shell"/>
+          <ellipse cx="190" cy="104" rx="17" ry="27" class="rb-shell"/>
+          <ellipse cx="28" cy="104" rx="7" ry="15" class="rb-ear-ring" filter="url(#rbGlow)"/>
+          <ellipse cx="192" cy="104" rx="7" ry="15" class="rb-ear-ring" filter="url(#rbGlow)"/>
+          <!-- helmet head -->
+          <ellipse cx="110" cy="98" rx="82" ry="76" class="rb-shell"/>
+          <path d="M60 40 Q110 18 160 40" class="rb-joint-line"/>
+          <!-- dark visor face -->
+          <rect x="42" y="62" width="136" height="80" rx="40" class="rb-visor"/>
+          <path d="M62 72 Q100 64 140 68" class="rb-gloss"/>
+
+          <!-- glowing cyan face (eyes, brows, mouth) -->
+          <g class="rb-face" filter="url(#rbGlow)">
+            <g class="rb-brows">
+              <path d="M70 85 L92 79"/><path d="M150 85 L128 79"/>
+            </g>
+            <g class="rb-look">
+              <g class="rb-eye"><circle cx="82" cy="102" r="12.5" class="rb-eye-ring"/><circle cx="78" cy="98" r="2.6" class="rb-eye-shine"/></g>
+              <g class="rb-eye"><circle cx="138" cy="102" r="12.5" class="rb-eye-ring"/><circle cx="134" cy="98" r="2.6" class="rb-eye-shine"/></g>
+              <path d="M70 105 Q82 91 94 105 M126 105 Q138 91 150 105" class="rb-eye-happy"/>
+            </g>
+            <path d="M100 126 Q110 133 120 126" class="rb-smile"/>
+            <!-- mouth opening: changes with each sound while speaking (lip sync) -->
+            <ellipse cx="110" cy="128" rx="8" ry="1.5" class="rb-mouth"/>
+          </g>
+        </g>
+      </svg>
+</span>
+{%- endmacro %}

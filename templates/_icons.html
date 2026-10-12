@@ -1,0 +1,41 @@
+{# Line icons for each soft-skill category (24x24, stroke uses the current text color) #}
+{% macro skill_icon(name, size=26) -%}
+<svg class="skill-icon" viewBox="0 0 24 24" width="{{ size }}" height="{{ size }}" fill="none" stroke="currentColor"
+     stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if name == "Communication" %}<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/><path d="M8.5 11h7M8.5 14h4"/>
+{%- elif name == "Teamwork" %}<circle cx="9" cy="8" r="3"/><circle cx="17" cy="9" r="2.4"/><path d="M3.5 19c.6-3 2.9-5 5.5-5s4.9 2 5.5 5M14.5 14.3c.8-.4 1.6-.6 2.5-.6 2.2 0 3.9 1.6 4.4 4.3"/>
+{%- elif name == "Leadership" %}<path d="M4 21V4"/><path d="M4 4h12l-2 4 2 4H4"/>
+{%- elif name == "Adaptability" %}<path d="M20 7h-9a5 5 0 0 0 0 10h1"/><path d="M17 4l3 3-3 3"/><path d="M4 17h9a5 5 0 0 0 0-10h-1"/><path d="M7 20l-3-3 3-3"/>
+{%- elif name == "Problem Solving" %}<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.7.5 1.1 1.3 1.1 2.2h5c0-.9.4-1.7 1.1-2.2A6 6 0 0 0 12 3z"/>
+{%- elif name == "Time Management" %}<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2.5 2.5M9 2h6"/>
+{%- elif name == "Emotional Intelligence" %}<path d="M12 20s-7.5-4.4-7.5-10A4.2 4.2 0 0 1 12 7.6 4.2 4.2 0 0 1 19.5 10c0 5.6-7.5 10-7.5 10z"/>
+{%- elif name.startswith("Work Ethic") %}<rect x="3" y="7" width="18" height="13" rx="2"/><path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M3 12h18"/>
+{%- else %}<circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/>
+{%- endif %}
+</svg>
+{%- endmacro %}
+
+{% macro ui_icon(name, size=18) -%}
+<svg viewBox="0 0 24 24" width="{{ size }}" height="{{ size }}" fill="none" stroke="currentColor"
+     stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if name == "mic" %}<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+{%- elif name == "camera" %}<rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3"/>
+{%- elif name == "spark" %}<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>
+{%- elif name == "trophy" %}<path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 21h8M9 17h6"/>
+{%- elif name == "chat" %}<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>
+{%- elif name == "target" %}<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r=".8"/>
+{%- elif name == "play" %}<path d="M8 5v14l11-7z" fill="currentColor" stroke="none"/>
+{%- endif %}
+</svg>
+{%- endmacro %}
+
+{% set SKILLS = [
+  ("Communication", "Explain ideas clearly"),
+  ("Teamwork", "Work well with others"),
+  ("Leadership", "Guide and motivate"),
+  ("Adaptability", "Handle change"),
+  ("Problem Solving", "Think through challenges"),
+  ("Time Management", "Plan and prioritize"),
+  ("Emotional Intelligence", "Understand feelings"),
+  ("Work Ethic & Attitude", "Show reliability"),
+] %}
