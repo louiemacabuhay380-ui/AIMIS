@@ -25,6 +25,9 @@ Some answers also show camera scores measured while the candidate spoke (eye con
 expression, gestures, from 0 to 100). Do not let them change the four answer scores. Use them only in
 the feedback: if eye contact or facial expression is below about 60, mention it in areas_to_improve
 with a practical tip in recommendations; if they are 80 or higher, you may praise it in strengths.
+Hand gestures that help explain a point are good: if the candidate used expressive gestures and rarely
+touched their face, you may praise it in strengths. Frequent face touching (about 15% or more) looks
+nervous and belongs in areas_to_improve. Never require gestures; some people speak well without them.
 
 Then give feedback on the whole interview, speaking directly to the candidate:
 - strengths: 2-3 sentences
@@ -155,8 +158,12 @@ def _camera_line(i, qa):
         return ""
     def n(key):
         return round(float(qa.get(key) or 0))
-    return (f"\n(Camera during answer {i}: eye contact {n('eye_contact_score')}, "
-            f"facial expression {n('facial_expression_score')}, gestures {n('gesture_score')})")
+    line = (f"\n(Camera during answer {i}: eye contact {n('eye_contact_score')}, "
+            f"facial expression {n('facial_expression_score')}, gestures {n('gesture_score')}")
+    if qa.get("expressive_gesture_ratio") is not None:
+        line += (f", used expressive hand gestures {n('expressive_gesture_ratio')}% of the time, "
+                 f"touched face {n('face_touch_ratio')}% of the time")
+    return line + ")"
 
 
 def analyze_interview(category, difficulty, qa_list):

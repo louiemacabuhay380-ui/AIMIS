@@ -97,9 +97,10 @@
       <span class="iv-timer" id="timer">00:00</span>
     </div>
 
-    <div class="iv-box cam-box-live">
+    <div class="iv-box cam-box-live" id="camBox" data-face="wait">
       <video id="selfView" autoplay muted playsinline></video>
       <span class="cam-label">You</span>
+      <span class="face-status" id="faceStatus" aria-live="polite">Starting your camera...</span>
     </div>
   </div>
 
@@ -117,7 +118,7 @@
     <div class="chat-actions">
       <p id="status" class="rec-status">You have up to 3 minutes for each answer.</p>
       <div class="btn-row">
-        <button id="startBtn" type="button" class="btn btn-lg">{{ 'Start interview' if current.question_order == 1 else 'Continue interview' }}</button>
+        <button id="startBtn" type="button" class="btn btn-lg" disabled>{{ 'Start interview' if current.question_order == 1 else 'Continue interview' }}</button>
         <button id="skipBtn" type="button" class="btn btn-lg btn-outline" hidden>Start answering now</button>
         <button id="restartBtn" type="button" class="btn btn-lg btn-outline" hidden>Restart answer</button>
         <button id="finishBtn" type="button" class="btn btn-lg" hidden>Finish answer</button>
@@ -157,13 +158,115 @@ let recent = [];         // the last 2 seconds of frames, used for live tips
 
 function emptyStats() {
   return { frames: 0, faceFrames: 0, eyeContactFrames: 0, smileFrames: 0,
-           frownFrames: 0, gestureFrames: 0 };
+           frownFrames: 0, gestureFrames: 0,
+           handFrames: 0, expressiveFrames: 0, faceTouchFrames: 0, fastFrames: 0,
+           speakingFrames: 0, speakingGestureFrames: 0 };
 }
 function blend(name, cats) {
   const c = cats.find(c => c.categoryName === name);
   return c ? c.score : 0;
 }
 function clamp(v) { return Math.max(0, Math.min(100, v)); }
+
+// ---------- Face check ----------
+// The interview only starts when the camera clearly sees the face, eyes and mouth.
+const FACE_CHECK = {
+  minWidth: 0.18,      // face must fill at least 18% of the picture's width (not too far away)
+  edge: 0.01,          // the whole face must be inside the picture
+  eyesClosed: 0.6,     // 0-1: how closed both eyes are before it counts as "eyes closed"
+  dark: 45,            // average brightness (0-255) below this is too dark
+  holdFrames: 5,       // must look good for this many checks in a row (about 1 second)
+};
+const EYE_POINTS = [33, 133, 159, 145, 362, 263, 386, 374];     // corners and lids of both eyes
+const MOUTH_POINTS = [61, 291, 0, 17, 13, 14];                  // corners and lips
+const shade = document.createElement("canvas");
+shade.width = 32; shade.height = 24;
+const shadeCtx = shade.getContext("2d", { willReadFrequently: true });
+let goodStreak = 0, lastTs = 0, checkTimer = null;
+
+function nextTimestamp() {               // MediaPipe needs every timestamp to be larger than the last
+  lastTs = Math.max(performance.now(), lastTs + 1);
+  return lastTs;
+}
+function brightness() {
+  shadeCtx.drawImage(video, 0, 0, 32, 24);
+  const d = shadeCtx.getImageData(0, 0, 32, 24).data;
+  let sum = 0;
+  for (let i = 0; i < d.length; i += 4) sum += d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+  return sum / (d.length / 4);
+}
+function boxOf(points) {
+  const xs = points.map(p => p.x), ys = points.map(p => p.y);
+  return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+}
+function handCovers(h, area) {
+  const pad = 0.03;
+  return h.landmarks.some(hand => hand.some(p =>
+    p.x > area.x0 - pad && p.x < area.x1 + pad && p.y > area.y0 - pad && p.y < area.y1 + pad));
+}
+function judgeFace(f, h) {
+  if (brightness() < FACE_CHECK.dark)
+    return { ok: false, code: "dark", msg: "It's too dark. Turn on a light or face a window so I can see you." };
+  if (!f.faceLandmarks.length)
+    return { ok: false, code: "noface", msg: "I can't see your face. Sit in front of the camera." };
+  const lm = f.faceLandmarks[0];
+  const whole = boxOf(lm);
+  const e = FACE_CHECK.edge;
+  if (whole.x0 < e || whole.x1 > 1 - e || whole.y0 < e || whole.y1 > 1 - e)
+    return { ok: false, code: "partial", msg: "Move so your whole face is inside the camera." };
+  if (whole.x1 - whole.x0 < FACE_CHECK.minWidth)
+    return { ok: false, code: "far", msg: "Move a little closer to the camera." };
+  if (!isFacingCamera(f, lm))
+    return { ok: false, code: "turned", msg: "Face the camera and look straight at it." };
+  if (h && handCovers(h, boxOf(MOUTH_POINTS.map(i => lm[i]))))
+    return { ok: false, code: "mouth", msg: "Move your hand away from your mouth so I can see it." };
+  if (h && handCovers(h, boxOf(EYE_POINTS.map(i => lm[i]))))
+    return { ok: false, code: "eyes", msg: "Move your hand away from your eyes so I can see them." };
+  const cats = f.faceBlendshapes[0].categories;
+  if ((blend("eyeBlinkLeft", cats) + blend("eyeBlinkRight", cats)) / 2 > FACE_CHECK.eyesClosed)
+    return { ok: false, code: "closed", msg: "Open your eyes and look at the camera." };
+  return { ok: true, code: "ok", msg: "I can see your eyes and mouth clearly." };
+}
+// Shares the result with the page; "good" only after it has held for about a second
+function publish(result) {
+  if (result.ok) goodStreak++; else goodStreak = 0;
+  let status = result;
+  if (result.ok && goodStreak < FACE_CHECK.holdFrames)
+    status = { ok: false, code: "hold", msg: "Hold still for a moment..." };
+  window.behavior.faceStatus = status;
+  window.dispatchEvent(new CustomEvent("facecheck", { detail: status }));
+}
+function checkFace() {                   // runs when not recording (recording uses analyzeFrame)
+  if (!face || window.behavior.active || video.readyState < 2) return;
+  const now = nextTimestamp();
+  const f = face.detectForVideo(video, now);
+  const h = hands.detectForVideo(video, now);
+  publish(judgeFace(f, h));
+}
+
+// ---------- Hand gestures ----------
+// Expressive gesture = an open hand moving at a natural speed, away from the face.
+// Face touching (rubbing the nose, touching hair) is counted separately as a nervous habit.
+const GESTURE = {
+  minMove: 0.008,      // smaller wrist movements than this are just stillness
+  maxMove: 0.12,       // faster than this per check is jerky / flailing
+  openFingers: 2,      // at least this many straightened fingers = open, expressive hand shape
+};
+const FINGERS = [[8, 6], [12, 10], [16, 14], [20, 18]];      // fingertip, middle joint
+const TIPS = [4, 8, 12, 16, 20];
+function fingersOpen(points) {
+  const w = points[0];
+  const d = p => Math.hypot(p.x - w.x, p.y - w.y);
+  return FINGERS.filter(([tip, joint]) => d(points[tip]) > d(points[joint]) * 1.15).length;
+}
+function touchesFace(points, box) {
+  const pad = 0.02;
+  return TIPS.some(i => { const p = points[i];
+    return p.x > box.x0 - pad && p.x < box.x1 + pad && p.y > box.y0 - pad && p.y < box.y1 + pad; });
+}
+function isSpeaking() {                  // the microphone meter marks when the user's voice was last heard
+  return performance.now() - (window.aimisVoiceAt || 0) < 700;
+}
 
 // Head direction in degrees from the face's 3D pose. Only the size of the angle matters here.
 function headAngles(matrix) {
@@ -187,9 +290,9 @@ function isFacingCamera(result, lm) {
 
 function analyzeFrame() {
   if (!face || !hands || video.readyState < 2) return;
-  const now = performance.now();
+  const now = nextTimestamp();
   stats.frames++;
-  const frame = { face: false, eye: false, smile: false };
+  const frame = { face: false, eye: false, smile: false, touch: false, gesture: false };
 
   // Face: visibility, eye contact, expression
   const f = face.detectForVideo(video, now);
@@ -210,37 +313,62 @@ function analyzeFrame() {
     if ((blend("browDownLeft", cats) + blend("browDownRight", cats)) / 2 > 0.5) stats.frownFrames++;
   }
 
-  // Hands: gestures
-  // Each hand is tracked separately, so switching between hands isn't mistaken for movement
+  // Hands: expressive gestures vs. face touching. Each hand is tracked separately,
+  // so switching between hands isn't mistaken for movement.
   const h = hands.detectForVideo(video, now);
+  const faceBox = f.faceLandmarks.length ? boxOf(f.faceLandmarks[0]) : null;
+  const speaking = isSpeaking();
+  if (speaking) stats.speakingFrames++;
   const seen = {};
-  let moved = false;
+  let moved = false, expressive = false, touching = false, fast = false;
   h.landmarks.forEach((points, i) => {
     const side = (h.handedness[i] && h.handedness[i][0] && h.handedness[i][0].categoryName) || ("hand" + i);
     const wrist = points[0];
     const last = lastWrists[side];
-    if (last && Math.hypot(wrist.x - last.x, wrist.y - last.y) > 0.02) moved = true;
+    const move = last ? Math.hypot(wrist.x - last.x, wrist.y - last.y) : 0;
+    if (move > 0.02) moved = true;
+    if (move >= GESTURE.maxMove) fast = true;
+    if (faceBox && touchesFace(points, faceBox)) touching = true;
+    else if (last && move > GESTURE.minMove && move < GESTURE.maxMove && fingersOpen(points) >= GESTURE.openFingers)
+      expressive = true;
     seen[side] = wrist;
   });
   lastWrists = seen;                 // hands that left the frame start fresh next time
   if (moved) stats.gestureFrames++;
+  if (h.landmarks.length) stats.handFrames++;
+  if (touching) stats.faceTouchFrames++;
+  if (fast) stats.fastFrames++;
+  if (expressive) { stats.expressiveFrames++; if (speaking) stats.speakingGestureFrames++; }
+  frame.touch = touching;
+  frame.gesture = expressive;
 
   recent.push(frame);
   if (recent.length > 10) recent.shift();
+  publish(judgeFace(f, h));          // keeps the camera status up to date while answering
 }
 
 function computeScores(s) {
   const smileRatio = s.faceFrames ? s.smileFrames / s.faceFrames : 0;
   const frownRatio = s.faceFrames ? s.frownFrames / s.faceFrames : 0;
   const gestureRatio = s.gestureFrames / s.frames;
+  const handRatio = s.handFrames / s.frames;
+  const expressiveRatio = s.expressiveFrames / s.frames;
+  const touchRatio = s.faceTouchFrames / s.frames;
+  const fastRatio = s.fastFrames / s.frames;
+  // While the user was speaking, how often did their hands help explain?
+  const talkGesture = s.speakingFrames >= 10 ? s.speakingGestureFrames / s.speakingFrames : expressiveRatio;
 
   let expression = smileRatio >= 0.1 ? 100 : 70 + smileRatio * 300;   // some smiling is ideal
   expression = clamp(expression - frownRatio * 50);                   // frequent frowning lowers it
 
   let gesture;
-  if (gestureRatio < 0.05) gesture = 70;                              // little or no gesturing
-  else if (gestureRatio <= 0.5) gesture = 100;                        // natural gesturing
-  else gesture = clamp(100 - (gestureRatio - 0.5) * 120);             // constant movement / fidgeting
+  if (handRatio < 0.1) gesture = 65;                                  // hands out of view: nothing to judge
+  else if (talkGesture < 0.1) gesture = 65 + talkGesture * 250;       // few gestures: 65 to 90
+  else if (talkGesture <= 0.6) gesture = 100;                         // natural, expressive gesturing
+  else gesture = 100 - (talkGesture - 0.6) * 75;                      // nonstop gesturing: down to 70
+  gesture -= touchRatio * 80;                                         // touching face or hair (nervous habit)
+  gesture -= Math.max(0, fastRatio - 0.15) * 60;                      // jerky, very fast movements
+  gesture = clamp(gesture);
 
   return {
     frames_analyzed: s.frames,
@@ -250,6 +378,9 @@ function computeScores(s) {
     gesture_score: +gesture.toFixed(2),
     smile_ratio: +(smileRatio * 100).toFixed(2),
     gesture_ratio: +(gestureRatio * 100).toFixed(2),
+    hands_visible_ratio: +(handRatio * 100).toFixed(2),
+    expressive_gesture_ratio: +(talkGesture * 100).toFixed(2),
+    face_touch_ratio: +(touchRatio * 100).toFixed(2),
   };
 }
 
@@ -275,7 +406,9 @@ window.behavior = {
     if (!recent.length) return null;
     const share = key => recent.filter(f => f[key]).length / recent.length;
     return { face: share("face"), eye: share("eye"), smile: share("smile"),
-             smiledAtAll: stats ? stats.smileFrames > 0 : false };
+             touch: share("touch"), gesture: share("gesture"),
+             smiledAtAll: stats ? stats.smileFrames > 0 : false,
+             gesturedAtAll: stats ? stats.expressiveFrames > 0 : false };
   },
 };
 
@@ -313,14 +446,20 @@ async function init() {
     video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
   } catch (e) {
     console.error("Camera blocked:", e);
+    publish({ ok: false, code: "nocamera",
+              msg: "Your camera is blocked or in use. Allow the camera for this site, then reload the page." });
     return;
   }
   try {
     const loaded = await loadMediaPipe();
     window.behavior.ready = true;
     if (window.behavior.active) timer = setInterval(analyzeFrame, SAMPLE_MS);   // recording already started
+    checkTimer = setInterval(checkFace, SAMPLE_MS);
   } catch (e) {
     console.error("Face analysis couldn't load:", e);   // the interview still works without behavior scores
+    window.behavior.faceStatus = { ok: true, code: "unavailable",
+      msg: "The face check couldn't load, so body language won't be scored this time." };
+    window.dispatchEvent(new CustomEvent("facecheck", { detail: window.behavior.faceStatus }));
   }
 }
 init();
@@ -573,6 +712,7 @@ function startMeter(s) {
     const level = Math.min(100, (peak / 128) * 200);
     const dt = now - lastTick; lastTick = now;
     if (level < 4) silentMs += dt; else silentMs = 0;
+    if (level >= 8) window.aimisVoiceAt = now;          // used to match gestures with speaking
     if (level >= 4 && level < 12) quietMs += dt; else if (level >= 12) quietMs = Math.max(0, quietMs - dt);
     levelRaf = requestAnimationFrame(tick);
   })();
@@ -590,8 +730,11 @@ function currentTip() {
   if (silentMs > 5000) return ["Take your time. Continue when you're ready.", "info"];
   if (quietMs > 3000) return ["Speak a little louder so your answer is clear.", "warn"];
   if (b && b.eye < 0.4) return ["Try to look at the camera, as if it's my eyes.", "warn"];
+  if (b && b.touch > 0.3) return ["Try not to touch your face while you answer.", "warn"];
   if (fillerCount >= 3) return ["Try pausing briefly instead of saying \"um\" or \"ano\".", "warn"];
   if (b && seconds > 15 && !b.smiledAtAll) return ["A natural smile helps you look confident.", "info"];
+  if (b && seconds > 30 && !b.gesturedAtAll) return ["Small hand gestures can help you explain your points.", "info"];
+  if (b && b.gesture > 0.2 && b.touch < 0.1) return ["Nice, your hand gestures help your explanation.", "good"];
   if (seconds > 150) return ["You're close to 3 minutes. Start wrapping up.", "info"];
   return ["Good. Keep going.", "good"];
 }
@@ -621,10 +764,45 @@ function updateProgress() {
 }
 function fmt(s) { return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0"); }
 
+// ---------- Face check: the Start button unlocks only when the face is clearly visible ----------
+const camBox = document.getElementById("camBox");
+const faceStatusEl = document.getElementById("faceStatus");
+let faceOk = false, lastFaceCode = "";
+// Short labels for the small corner badge; the full message is shown under the robot
+const FACE_SHORT = { ok: "Face OK", hold: "Hold still", dark: "Too dark", noface: "No face",
+  partial: "Face cut off", far: "Move closer", turned: "Face the camera", mouth: "Mouth covered",
+  eyes: "Eyes covered", closed: "Eyes closed", nocamera: "Camera blocked", unavailable: "Check off" };
+statusEl.textContent = "Checking your camera...";
+window.addEventListener("facecheck", e => {
+  const s = e.detail;
+  faceOk = s.ok;
+  faceStatusEl.textContent = FACE_SHORT[s.code] || s.msg;
+  faceStatusEl.title = s.msg;
+  camBox.dataset.face = s.ok ? "ok" : (s.code === "hold" ? "wait" : "bad");
+  if (s.code === lastFaceCode) return;          // only react when something changed
+  lastFaceCode = s.code;
+  if (state === "recording" && !s.ok && s.code !== "hold") { setTip(s.msg, "warn"); return; }
+  if (state !== "idle") return;
+  startBtn.disabled = !s.ok;
+  if (s.ok) {
+    setTip(s.code === "unavailable" ? "Press Start when you're ready." : "I can see you clearly. Press Start when you're ready.", "good");
+    statusEl.textContent = "You have up to 3 minutes for each answer.";
+    setMood("happy");
+  } else if (s.code !== "hold") {
+    setTip(s.msg, "warn");
+    statusEl.textContent = "The interview starts once I can clearly see your eyes and mouth.";
+    setMood("concerned");
+  }
+});
+
 // ---------- The session ----------
 // 1. Start: get the microphone once for the whole interview, then ask the first question.
 startBtn.onclick = async () => {
   if (state !== "idle") return;
+  if (!faceOk) {                                // safety check; the button is normally locked
+    setTip((window.behavior.faceStatus || {}).msg || "Look at the camera first.", "warn");
+    return;
+  }
   try {
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
   } catch (e) {

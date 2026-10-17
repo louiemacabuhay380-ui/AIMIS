@@ -1059,3 +1059,29 @@ fieldset.field legend, .field-label { font-weight: 700; padding: 0; margin-botto
 .math-op { font-size: 20px; font-weight: 700; color: var(--muted); }
 .math-result { background: linear-gradient(135deg, var(--primary), var(--accent-2)); color: #fff; border-color: transparent; }
 .math-result small { color: rgba(255, 255, 255, 0.85); }
+
+/* Forgot password link under the password field */
+.forgot-link { align-self: flex-end; margin-top: -8px; font-size: 14px; font-weight: 600; text-decoration: none; }
+.forgot-link:hover { text-decoration: underline; }
+
+/* Face check on the camera box: a colored frame and a small corner badge, nothing over the face */
+.cam-box-live { position: relative; }
+.cam-box-live::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+  box-shadow: inset 0 0 0 3px transparent; transition: box-shadow 0.25s;
+}
+.cam-box-live[data-face="bad"]::after { box-shadow: inset 0 0 0 3px #f59e0b; }
+.cam-box-live[data-face="ok"]::after { box-shadow: inset 0 0 0 3px #10b981; }
+.face-status {
+  position: absolute; top: 10px; right: 10px;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 700; color: #fff; white-space: nowrap;
+  background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(4px);
+}
+.face-status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; }
+.cam-box-live[data-face="bad"] .face-status::before { background: #fbbf24; }
+.cam-box-live[data-face="ok"] .face-status::before { background: #34d399; }
+/* while answering, the frame and badge only show up if there's a problem */
+.iv-layout.recording .cam-box-live[data-face="ok"]::after,
+.iv-layout.recording .cam-box-live[data-face="ok"] .face-status { opacity: 0; }

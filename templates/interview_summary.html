@@ -73,7 +73,7 @@
       <ul>
         <li><b>Response Quality:</b> the AI rates each answer's relevance, clarity, completeness (situation, action, result), and grammar from 0 to 100, then averages them.</li>
         <li><b>Speech Performance:</b> the average of fluency, speech clarity, and confidence. Confidence is measured from your pauses, tone, volume steadiness, and filler words.</li>
-        <li><b>Behavioral:</b> the average of eye contact, facial expression, and gestures, measured by your camera on your own device.</li>
+        <li><b>Behavioral:</b> the average of eye contact, facial expression, and gestures, measured by your camera on your own device. Gestures score higher when you use open-hand gestures while speaking, and lower when you touch your face or move your hands very fast.</li>
         <li><b>Overall:</b> each score is multiplied by how much it counts (60%, 25%, and 15%), then added together. The percentages next to each bar are these weights, not your scores.</li>
       </ul>
     </details>
@@ -123,6 +123,12 @@
       <div class="kv"><span>Face visibility</span><span class="good">{{ avg(watched, "face_visibility_score") }}%</span></div>
       <div class="kv"><span>Facial expression</span><span class="good">{{ avg(watched, "facial_expression_score") }}%</span></div>
       <div class="kv"><span>Gestures</span><span class="good">{{ avg(watched, "gesture_score") }}%</span></div>
+      {% set gestured = watched | selectattr("expressive_gesture_ratio", "number") | list %}
+      {% if gestured %}
+        <div class="kv"><span>Expressive hand gestures <small class="muted">(while speaking)</small></span><span>{{ avg(gestured, "expressive_gesture_ratio") }}%</span></div>
+        <div class="kv"><span>Touching face or hair</span><span class="{{ 'warn' if (gestured | map(attribute='face_touch_ratio') | select('number') | sum) / (gestured | length) >= 15 }}">{{ avg(gestured, "face_touch_ratio") }}%</span></div>
+        <div class="kv"><span>Hands visible</span><span>{{ avg(gestured, "hands_visible_ratio") }}%</span></div>
+      {% endif %}
       <div class="kv"><span>Time smiling</span><span>{{ avg(watched, "smile_ratio") }}%</span></div>
     {% else %}
       <p class="muted">No camera data for this interview.</p>
@@ -195,7 +201,11 @@
           <span>Eye contact <b>{{ num(a.eye_contact_score) }}</b></span>
           <span>Face visible <b>{{ num(a.face_visibility_score) }}%</b></span>
           <span>Expression <b>{{ num(a.facial_expression_score) }}</b> (smiling {{ num(a.smile_ratio) }}%)</span>
-          <span>Gestures <b>{{ num(a.gesture_score) }}</b> (moving {{ num(a.gesture_ratio) }}%)</span>
+          {% if a.expressive_gesture_ratio is number %}
+            <span>Gestures <b>{{ num(a.gesture_score) }}</b> (expressive {{ num(a.expressive_gesture_ratio) }}%, face touching {{ num(a.face_touch_ratio) }}%)</span>
+          {% else %}
+            <span>Gestures <b>{{ num(a.gesture_score) }}</b> (moving {{ num(a.gesture_ratio) }}%)</span>
+          {% endif %}
         {% endif %}
         {% if a.word_count is number %}
           <span>Words <b>{{ a.word_count }}</b></span>

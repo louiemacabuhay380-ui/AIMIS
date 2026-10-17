@@ -1,7 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Log in · AIMIS</div>
-{% endblock %}
-
+{% block title %}Log in · AIMIS{% endblock %}
 {% from "_robot.html" import robot %}
 {% block content %}
 <div class="auth-wrap">
@@ -28,6 +26,7 @@
     <label>Password
       <input name="password" type="password" placeholder="Your password" required>
     </label>
+    <a class="forgot-link" href="{{ url_for('forgot_password') }}">Forgot password?</a>
     <button type="submit" class="btn btn-block">Log in</button>
   </form>
 

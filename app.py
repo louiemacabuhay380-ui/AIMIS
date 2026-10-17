@@ -19,6 +19,7 @@ load_dotenv()
 from ai_service import analyze_interview, transcribe_answer
 from nlp_service import analyze_text
 from speech_service import analyze_audio
+import password_reset
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
@@ -48,6 +49,9 @@ def get_db():
         host=os.getenv("DB_HOST"), user=os.getenv("DB_USER"),
         password=os.getenv("DB_PASSWORD"), database=os.getenv("DB_NAME"),
         buffered=True)
+
+
+password_reset.register(app, get_db)   # adds the Forgot password pages
 
 
 def login_required(f):
@@ -83,7 +87,7 @@ def evaluate_interview(interview_id):
                       LEFT JOIN speech_analysis sa ON sa.response_id = r.response_id
                       LEFT JOIN behavior_analysis ba ON ba.response_id = r.response_id
                       WHERE iq.interview_id = %s ORDER BY iq.question_order""", (interview_id,))
-    qa_list = cursor.fetchall()
+    qa_list = attach_gesture_extras(cursor, cursor.fetchall())
 
     if not qa_list:
         conn.close()
@@ -185,6 +189,27 @@ def add_filler_feedback(areas, tips, qa_list):
 
 
 BEHAVIOR_FEEDBACK_MIN = 60   # camera scores below this always get a comment in the feedback
+GESTURE_EXTRAS = ("hands_visible_ratio", "expressive_gesture_ratio", "face_touch_ratio")
+
+
+def attach_gesture_extras(cursor, rows):
+    """Add the detailed gesture numbers to each answer row (None if the database doesn't have them yet)."""
+    ids = [r["response_id"] for r in rows if r.get("response_id")]
+    for r in rows:
+        for k in GESTURE_EXTRAS:
+            r.setdefault(k, None)
+    if not ids:
+        return rows
+    placeholders = ", ".join(["%s"] * len(ids))
+    cursor.execute(f"SELECT * FROM behavior_analysis WHERE response_id IN ({placeholders})", ids)
+    extra = {b["response_id"]: b for b in cursor.fetchall()}
+    for r in rows:
+        b = extra.get(r.get("response_id"))
+        if b:
+            for k in GESTURE_EXTRAS:
+                if k in b:
+                    r[k] = b[k]
+    return rows
 
 
 def behavior_summary(qa_list):
@@ -193,7 +218,11 @@ def behavior_summary(qa_list):
     rows = [qa for qa in qa_list if qa.get("eye_contact_score") is not None]
     if not rows:
         return None
-    return {k: round(sum(float(qa[k] or 0) for qa in rows) / len(rows)) for k in keys}
+    summary = {k: round(sum(float(qa[k] or 0) for qa in rows) / len(rows)) for k in keys}
+    for k in GESTURE_EXTRAS:                       # only answers that have the detailed numbers
+        vals = [float(qa[k]) for qa in rows if qa.get(k) is not None]
+        summary[k] = round(sum(vals) / len(vals)) if vals else None
+    return summary
 
 
 def add_behavior_feedback(areas, tips, qa_list):
@@ -212,11 +241,25 @@ def add_behavior_feedback(areas, tips, qa_list):
     if b["facial_expression_score"] < BEHAVIOR_FEEDBACK_MIN and not re.search(r"smil|expression|facial", areas or "", re.I):
         issues.append(f"your facial expression looked tense or serious (about {b['facial_expression_score']}%)")
         advice.append("Smile naturally when you greet the interviewer and when you talk about something positive.")
-    if b["gesture_score"] < BEHAVIOR_FEEDBACK_MIN and not re.search(r"gesture|hand|fidget", areas or "", re.I):
-        issues.append("your hands moved almost constantly, which can look like fidgeting")
+    touch = b.get("face_touch_ratio")
+    expressive = b.get("expressive_gesture_ratio")
+    hands = b.get("hands_visible_ratio")
+    mentioned = re.search(r"gesture|hand|fidget|touch", areas or "", re.I)
+    if touch is not None and touch >= 15 and not mentioned:
+        issues.append(f"you touched your face or hair about {touch}% of the time, which can look nervous")
+        advice.append("Rest your hands on the table or in your lap between points instead of touching your face.")
+    elif b["gesture_score"] < BEHAVIOR_FEEDBACK_MIN and not mentioned:
+        issues.append("your hand movements were very frequent or fast, which can distract from what you say")
         advice.append("Keep your hands relaxed and use small gestures only to stress important points.")
+    elif expressive is not None and expressive < 5 and not mentioned:
+        # Not a mistake, just a tip: gestures help, but nobody must use them
+        tip = ("Try using a few open-hand gestures at chest level while you talk, for example counting points on "
+               "your fingers; it makes your answers look more confident and easier to follow.")
+        if hands is not None and hands < 10:
+            tip = "Sit a little farther back so your hands are visible too. " + tip
+        advice.append(tip)
     if not issues:
-        return areas, tips
+        return areas, ((tips + " " if tips else "") + " ".join(advice)) if advice else tips
     sentence = "On body language, " + "; ".join(issues) + "."
     return ((areas + " " if areas else "") + sentence[0].upper() + sentence[1:],
             (tips + " " if tips else "") + " ".join(advice))
@@ -635,12 +678,25 @@ def interview(interview_id):
                 values = [min(max(float(b.get(k, 0)), 0), 100) for k in
                           ("eye_contact_score", "face_visibility_score", "facial_expression_score",
                            "gesture_score", "smile_ratio", "gesture_ratio")]
-                cursor.execute("""INSERT INTO behavior_analysis
-                                  (response_id, eye_contact_score, face_visibility_score,
-                                   facial_expression_score, gesture_score, smile_ratio,
-                                   gesture_ratio, frames_analyzed)
-                                  VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
-                               (response_id, *values, int(b.get("frames_analyzed", 0))))
+                extras = [min(max(float(b.get(k, 0) or 0), 0), 100) for k in GESTURE_EXTRAS]
+                try:
+                    cursor.execute("""INSERT INTO behavior_analysis
+                                      (response_id, eye_contact_score, face_visibility_score,
+                                       facial_expression_score, gesture_score, smile_ratio,
+                                       gesture_ratio, frames_analyzed,
+                                       hands_visible_ratio, expressive_gesture_ratio, face_touch_ratio)
+                                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                                   (response_id, *values, int(b.get("frames_analyzed", 0)), *extras))
+                except mysql.connector.errors.ProgrammingError as e:
+                    if e.errno != 1054:      # 1054 = unknown column
+                        raise
+                    print("Note: run block 5 of database/schema_updates.sql to save the detailed gesture data.")
+                    cursor.execute("""INSERT INTO behavior_analysis
+                                      (response_id, eye_contact_score, face_visibility_score,
+                                       facial_expression_score, gesture_score, smile_ratio,
+                                       gesture_ratio, frames_analyzed)
+                                      VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
+                                   (response_id, *values, int(b.get("frames_analyzed", 0))))
             except (ValueError, TypeError, AttributeError):
                 pass   # invalid data from the browser: skip behavior for this answer
         conn.commit()
@@ -771,7 +827,7 @@ def interview_summary(interview_id):
         flash("Interview not found.")
         return redirect(url_for("dashboard"))
 
-    cursor.execute("""SELECT iq.question_order, qb.question_text, r.transcript, r.audio_path,
+    cursor.execute("""SELECT iq.question_order, qb.question_text, r.response_id, r.transcript, r.audio_path,
                              n.relevance_score, n.clarity_score, n.completeness_score, n.grammar_score,
                              n.word_count, n.vocabulary_diversity, n.keyword_count, n.keywords_found,
                              s.speaking_rate, s.filler_word_count, s.pause_count, s.fluency_score,
@@ -788,7 +844,7 @@ def interview_summary(interview_id):
                       LEFT JOIN behavior_analysis b ON b.response_id = r.response_id
                       WHERE iq.interview_id = %s
                       ORDER BY iq.question_order""", (interview_id,))
-    answers = cursor.fetchall()
+    answers = attach_gesture_extras(cursor, cursor.fetchall())
     cursor.execute("SELECT * FROM evaluations WHERE interview_id = %s", (interview_id,))
     evaluation = cursor.fetchone()
     cursor.execute("SELECT * FROM feedback WHERE interview_id = %s ORDER BY created_at DESC LIMIT 1",
