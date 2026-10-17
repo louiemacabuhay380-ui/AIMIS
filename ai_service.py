@@ -21,6 +21,11 @@ for fillers, but if the candidate used them often (about 3 or more in total), yo
 in areas_to_improve: say roughly how many, quote examples such as "um", "uh" or "ano", and explain
 that fillers can make them sound unsure. Then give a practical tip for it in recommendations.
 
+Some answers also show camera scores measured while the candidate spoke (eye contact, facial
+expression, gestures, from 0 to 100). Do not let them change the four answer scores. Use them only in
+the feedback: if eye contact or facial expression is below about 60, mention it in areas_to_improve
+with a practical tip in recommendations; if they are 80 or higher, you may praise it in strengths.
+
 Then give feedback on the whole interview, speaking directly to the candidate:
 - strengths: 2-3 sentences
 - areas_to_improve: 2-3 sentences
@@ -144,11 +149,22 @@ def _generate_ollama(prompt, expected_answers):
     raise last_error
 
 
+def _camera_line(i, qa):
+    """Camera scores for one answer, or nothing if the camera wasn't used."""
+    if qa.get("eye_contact_score") is None:
+        return ""
+    def n(key):
+        return round(float(qa.get(key) or 0))
+    return (f"\n(Camera during answer {i}: eye contact {n('eye_contact_score')}, "
+            f"facial expression {n('facial_expression_score')}, gestures {n('gesture_score')})")
+
+
 def analyze_interview(category, difficulty, qa_list):
     """Score all answers in an interview and write overall feedback."""
     qa_text = "\n\n".join(
         f"Question {i}: {qa['question_text']}\nAnswer {i}: {qa['transcript']}\n"
         f"(Filler words detected in answer {i}: {qa.get('filler_word_count', 0)})"
+        + _camera_line(i, qa)
         for i, qa in enumerate(qa_list, start=1))
     prompt = EVAL_PROMPT.format(category=category, difficulty=difficulty, qa_text=qa_text)
     if os.getenv("EVAL_PROVIDER", "gemini") == "ollama":

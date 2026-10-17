@@ -135,10 +135,24 @@
 
 <!-- ======================= Behavioral analysis (MediaPipe, runs in the browser) ======================= -->
 <script type="module">
-const MEDIAPIPE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+// MediaPipe files: the copy saved in the project is used first (works offline, run download_mediapipe.py once);
+// if it isn't there, they are loaded from the internet instead.
+const MP_LOCAL = "{{ url_for('static', filename='mediapipe') }}";
+const MP_ONLINE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
+const MODELS_ONLINE = {
+  face: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
+  hand: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+};
+
+// Eye contact rules (tune these after testing with your group)
+const MAX_HEAD_TURN = 25;    // degrees left/right before it no longer counts as facing the camera
+const MAX_HEAD_TILT = 25;    // degrees up/down (a little room because the camera sits above the screen)
+const EYES_AWAY = 0.55;      // 0-1: how strongly both eyes must look away to count as looking away
+
 const video = document.getElementById("selfView");
 const SAMPLE_MS = 200;   // analyze 5 frames per second
-let face = null, hands = null, timer = null, stats = null, lastWrist = null;
+let face = null, hands = null, timer = null, stats = null;
+let lastWrists = {};     // last position of each hand (Left / Right), used to detect gestures
 let recent = [];         // the last 2 seconds of frames, used for live tips
 
 function emptyStats() {
@@ -150,6 +164,26 @@ function blend(name, cats) {
   return c ? c.score : 0;
 }
 function clamp(v) { return Math.max(0, Math.min(100, v)); }
+
+// Head direction in degrees from the face's 3D pose. Only the size of the angle matters here.
+function headAngles(matrix) {
+  const m = matrix.data;
+  const scale = Math.hypot(m[0], m[1], m[2]) || 1;
+  const turn = Math.asin(Math.max(-1, Math.min(1, m[2] / scale))) * 180 / Math.PI;
+  const tilt = Math.atan2(m[6], m[10]) * 180 / Math.PI;
+  return { turn: Math.abs(turn), tilt: Math.min(Math.abs(tilt), 180 - Math.abs(tilt)) };
+}
+function isFacingCamera(result, lm) {
+  const matrix = result.facialTransformationMatrixes && result.facialTransformationMatrixes[0];
+  if (matrix && matrix.data) {
+    const a = headAngles(matrix);
+    return a.turn <= MAX_HEAD_TURN && a.tilt <= MAX_HEAD_TILT;
+  }
+  // Fallback: compare the nose with the middle of the cheeks (left/right only)
+  const nose = lm[1], left = lm[234], right = lm[454];
+  const width = Math.abs(right.x - left.x) || 1;
+  return Math.abs((nose.x - (left.x + right.x) / 2) / width) < 0.12;
+}
 
 function analyzeFrame() {
   if (!face || !hands || video.readyState < 2) return;
@@ -163,28 +197,33 @@ function analyzeFrame() {
     stats.faceFrames++;
     frame.face = true;
     const lm = f.faceLandmarks[0];
-    const nose = lm[1], left = lm[234], right = lm[454];       // nose tip and both cheeks
-    const width = Math.abs(right.x - left.x) || 1;
-    const facingCamera = Math.abs((nose.x - (left.x + right.x) / 2) / width) < 0.12;
     const cats = f.faceBlendshapes[0].categories;
+    const facingCamera = isFacingCamera(f, lm);
+    const avg2 = (a, b) => (blend(a, cats) + blend(b, cats)) / 2;     // both eyes together
     const lookingAway = Math.max(
-      blend("eyeLookOutLeft", cats), blend("eyeLookOutRight", cats),
-      blend("eyeLookInLeft", cats), blend("eyeLookInRight", cats),
-      blend("eyeLookUpLeft", cats), blend("eyeLookDownLeft", cats)) > 0.6;
+      avg2("eyeLookOutLeft", "eyeLookInRight"),     // both eyes to one side
+      avg2("eyeLookInLeft", "eyeLookOutRight"),     // both eyes to the other side
+      avg2("eyeLookUpLeft", "eyeLookUpRight"),
+      avg2("eyeLookDownLeft", "eyeLookDownRight")) > EYES_AWAY;
     if (facingCamera && !lookingAway) { stats.eyeContactFrames++; frame.eye = true; }
     if ((blend("mouthSmileLeft", cats) + blend("mouthSmileRight", cats)) / 2 > 0.3) { stats.smileFrames++; frame.smile = true; }
     if ((blend("browDownLeft", cats) + blend("browDownRight", cats)) / 2 > 0.5) stats.frownFrames++;
   }
 
   // Hands: gestures
+  // Each hand is tracked separately, so switching between hands isn't mistaken for movement
   const h = hands.detectForVideo(video, now);
-  if (h.landmarks.length) {
-    const wrist = h.landmarks[0][0];
-    if (lastWrist && Math.hypot(wrist.x - lastWrist.x, wrist.y - lastWrist.y) > 0.02) stats.gestureFrames++;
-    lastWrist = wrist;
-  } else {
-    lastWrist = null;
-  }
+  const seen = {};
+  let moved = false;
+  h.landmarks.forEach((points, i) => {
+    const side = (h.handedness[i] && h.handedness[i][0] && h.handedness[i][0].categoryName) || ("hand" + i);
+    const wrist = points[0];
+    const last = lastWrists[side];
+    if (last && Math.hypot(wrist.x - last.x, wrist.y - last.y) > 0.02) moved = true;
+    seen[side] = wrist;
+  });
+  lastWrists = seen;                 // hands that left the frame start fresh next time
+  if (moved) stats.gestureFrames++;
 
   recent.push(frame);
   if (recent.length > 10) recent.shift();
@@ -221,7 +260,7 @@ window.behavior = {
   start() {
     stats = emptyStats();
     recent = [];
-    lastWrist = null;
+    lastWrists = {};
     clearInterval(timer);
     this.active = true;
     if (this.ready) timer = setInterval(analyzeFrame, SAMPLE_MS);
@@ -240,6 +279,35 @@ window.behavior = {
   },
 };
 
+// Try the project's own copy first; if any file is missing, use the online copy.
+async function loadMediaPipe() {
+  const sources = [
+    { lib: MP_LOCAL + "/vision_bundle.mjs", wasm: MP_LOCAL + "/wasm",
+      face: MP_LOCAL + "/models/face_landmarker.task", hand: MP_LOCAL + "/models/hand_landmarker.task", name: "saved copy" },
+    { lib: MP_ONLINE, wasm: MP_ONLINE + "/wasm", face: MODELS_ONLINE.face, hand: MODELS_ONLINE.hand, name: "online" },
+  ];
+  let lastError;
+  for (const src of sources) {
+    try {
+      const { FilesetResolver, FaceLandmarker, HandLandmarker } = await import(src.lib);
+      const fileset = await FilesetResolver.forVisionTasks(src.wasm);
+      face = await FaceLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: src.face },
+        runningMode: "VIDEO", numFaces: 1,
+        outputFaceBlendshapes: true, outputFacialTransformationMatrixes: true });
+      hands = await HandLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: src.hand },
+        runningMode: "VIDEO", numHands: 2 });
+      console.info("Behavior analysis loaded from the " + src.name);
+      return src.name;
+    } catch (e) {
+      lastError = e;
+      console.info("Behavior analysis: " + src.name + " not available, trying the next option.");
+    }
+  }
+  throw lastError;
+}
+
 async function init() {
   try {
     video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
@@ -248,16 +316,7 @@ async function init() {
     return;
   }
   try {
-    const { FilesetResolver, FaceLandmarker, HandLandmarker } = await import(MEDIAPIPE);
-    const fileset = await FilesetResolver.forVisionTasks(MEDIAPIPE + "/wasm");
-    face = await FaceLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath:
-        "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" },
-      runningMode: "VIDEO", numFaces: 1, outputFaceBlendshapes: true });
-    hands = await HandLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath:
-        "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task" },
-      runningMode: "VIDEO", numHands: 2 });
+    const loaded = await loadMediaPipe();
     window.behavior.ready = true;
     if (window.behavior.active) timer = setInterval(analyzeFrame, SAMPLE_MS);   // recording already started
   } catch (e) {
@@ -394,7 +453,7 @@ function stopLip() {
 // even if the browser never reports that speaking finished.
 // Words the voice should pronounce differently from how they are written.
 // "AIMIS" would be spelled out letter by letter, so the voice reads it as "Aymis" (EY-mis).
-const PRONOUNCE = [[/\bAIMIS\b/g, "Eymis"]];
+const PRONOUNCE = [[/\bAIMIS\b/g, "Aymis"]];
 function sayLike(text) {
   return PRONOUNCE.reduce((t, [pattern, spoken]) => t.replace(pattern, spoken), text);
 }

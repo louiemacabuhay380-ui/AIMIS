@@ -32,23 +32,49 @@
 {% if evaluation %}
   {# ---- Score bars ---- #}
   <div class="card">
-    {% set bars = [("Response Quality", evaluation.response_quality_score),
-                   ("Speech Performance", evaluation.speech_performance_score),
-                   ("Behavioral", evaluation.behavioral_score)] %}
-    {% for label, value in bars if value is number %}
+    {# Each part: its score, and how much it counts toward the Overall score #}
+    {% set bars = [("Response Quality", evaluation.response_quality_score, 60, "How good your answers were"),
+                   ("Speech Performance", evaluation.speech_performance_score, 25, "How you spoke"),
+                   ("Behavioral", evaluation.behavioral_score, 15, "Your body language on camera")] %}
+    {% set used = bars | selectattr(1, "number") | list %}
+    {% set weight_total = used | map(attribute=2) | sum %}
+    {% for label, value, weight, desc in used %}
       {% set bar_style = "width: " ~ value ~ "%" %}
       <div class="score-row">
-        <div class="label-line"><span>{{ label }}</span><span>{{ num(value) }}%</span></div>
+        <div class="label-line">
+          <span>{{ label }} <span class="weight-chip">counts {{ weight }}% of Overall</span></span>
+          <span>{{ num(value) }}%</span>
+        </div>
         <div class="bar"><span style="{{ bar_style }}"></span></div>
+        <p class="score-desc">{{ desc }}</p>
       </div>
     {% endfor %}
+
+    {# The Overall score worked out with this interview's own numbers #}
+    {% if used and evaluation.overall_score is number %}
+      <div class="overall-math">
+        <span class="overall-math-label">How your Overall score of {{ num(evaluation.overall_score) }}% was calculated</span>
+        <div class="overall-math-row">
+          {% for label, value, weight, desc in used %}
+            <span class="math-term"><span><b>{{ num(value) }}%</b> × {{ weight }}%</span><small>{{ label }}</small></span>
+            {% if not loop.last %}<span class="math-op">+</span>{% endif %}
+          {% endfor %}
+          <span class="math-op">=</span>
+          <span class="math-term math-result"><b>{{ num(evaluation.overall_score) }}%</b><small>Overall</small></span>
+        </div>
+        {% if weight_total != 100 %}
+          <p class="small muted">Some parts had no data (for example, no camera), so the parts above were rescaled to add up to 100%.</p>
+        {% endif %}
+      </div>
+    {% endif %}
+
     <details class="help">
-      <summary>How are these scores calculated?</summary>
+      <summary>What does each score measure?</summary>
       <ul>
         <li><b>Response Quality:</b> the AI rates each answer's relevance, clarity, completeness (situation, action, result), and grammar from 0 to 100, then averages them.</li>
         <li><b>Speech Performance:</b> the average of fluency, speech clarity, and confidence. Confidence is measured from your pauses, tone, volume steadiness, and filler words.</li>
         <li><b>Behavioral:</b> the average of eye contact, facial expression, and gestures, measured by your camera on your own device.</li>
-        <li><b>Overall:</b> 60% Response Quality + 25% Speech Performance + 15% Behavioral. Missing parts are left out.</li>
+        <li><b>Overall:</b> each score is multiplied by how much it counts (60%, 25%, and 15%), then added together. The percentages next to each bar are these weights, not your scores.</li>
       </ul>
     </details>
   </div>

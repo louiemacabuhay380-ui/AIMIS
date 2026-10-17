@@ -74,11 +74,14 @@ def evaluate_interview(interview_id):
     cursor.execute("SELECT category, difficulty FROM interviews WHERE interview_id = %s", (interview_id,))
     iv = cursor.fetchone()
     cursor.execute("""SELECT r.response_id, qb.question_text, qb.category, r.transcript,
-                             COALESCE(sa.filler_word_count, 0) AS filler_word_count
+                             COALESCE(sa.filler_word_count, 0) AS filler_word_count,
+                             ba.eye_contact_score, ba.facial_expression_score,
+                             ba.gesture_score, ba.face_visibility_score
                       FROM interview_questions iq
                       JOIN question_bank qb ON qb.question_id = iq.question_id
                       JOIN responses r ON r.interview_question_id = iq.interview_question_id
                       LEFT JOIN speech_analysis sa ON sa.response_id = r.response_id
+                      LEFT JOIN behavior_analysis ba ON ba.response_id = r.response_id
                       WHERE iq.interview_id = %s ORDER BY iq.question_order""", (interview_id,))
     qa_list = cursor.fetchall()
 
@@ -145,6 +148,7 @@ def evaluate_interview(interview_id):
                       VALUES (%s, %s, %s, %s, %s)""",
                    (interview_id, quality, speech, behavior, overall))
     areas, tips = add_filler_feedback(result.get("areas_to_improve", ""), result.get("recommendations", ""), qa_list)
+    areas, tips = add_behavior_feedback(areas, tips, qa_list)
     cursor.execute("""INSERT INTO feedback (interview_id, strengths, areas_to_improve, recommendations)
                       VALUES (%s, %s, %s, %s)""",
                    (interview_id, result.get("strengths", ""), areas, tips))
@@ -178,6 +182,44 @@ def add_filler_feedback(areas, tips, qa_list):
         "When you need a moment to think, pause silently for a second instead of saying a filler word; "
         "practicing your answers out loud helps the words come more smoothly.")
     return areas, tips
+
+
+BEHAVIOR_FEEDBACK_MIN = 60   # camera scores below this always get a comment in the feedback
+
+
+def behavior_summary(qa_list):
+    """Average camera scores across the answers that have them (None if the camera wasn't used)."""
+    keys = ("eye_contact_score", "facial_expression_score", "gesture_score", "face_visibility_score")
+    rows = [qa for qa in qa_list if qa.get("eye_contact_score") is not None]
+    if not rows:
+        return None
+    return {k: round(sum(float(qa[k] or 0) for qa in rows) / len(rows)) for k in keys}
+
+
+def add_behavior_feedback(areas, tips, qa_list):
+    """Make sure weak body language is always mentioned, even if the AI didn't mention it."""
+    b = behavior_summary(qa_list)
+    if not b:
+        return areas, tips
+    issues, advice = [], []
+    if b["face_visibility_score"] < 70 and not re.search(r"camera view|in the frame|visible", areas or "", re.I):
+        issues.append(f"your face was only visible to the camera about {b['face_visibility_score']}% of the time")
+        advice.append("Sit centered in front of the camera with your face well lit, so the interviewer can see you.")
+    if b["eye_contact_score"] < BEHAVIOR_FEEDBACK_MIN and not re.search(r"eye contact|looked away|looking away", areas or "", re.I):
+        issues.append(f"your eye contact was low (about {b['eye_contact_score']}%), so you often looked away from the camera")
+        advice.append("Look at the camera lens while you speak, as if it were the interviewer's eyes; "
+                      "it's fine to glance away briefly to think, then come back.")
+    if b["facial_expression_score"] < BEHAVIOR_FEEDBACK_MIN and not re.search(r"smil|expression|facial", areas or "", re.I):
+        issues.append(f"your facial expression looked tense or serious (about {b['facial_expression_score']}%)")
+        advice.append("Smile naturally when you greet the interviewer and when you talk about something positive.")
+    if b["gesture_score"] < BEHAVIOR_FEEDBACK_MIN and not re.search(r"gesture|hand|fidget", areas or "", re.I):
+        issues.append("your hands moved almost constantly, which can look like fidgeting")
+        advice.append("Keep your hands relaxed and use small gestures only to stress important points.")
+    if not issues:
+        return areas, tips
+    sentence = "On body language, " + "; ".join(issues) + "."
+    return ((areas + " " if areas else "") + sentence[0].upper() + sentence[1:],
+            (tips + " " if tips else "") + " ".join(advice))
 
 
 def transcribe_pending(interview_id):
