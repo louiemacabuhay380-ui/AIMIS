@@ -21,7 +21,12 @@
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Your Interview Report</h1>
+    {% if admin_view %}
+      <p class="room-kicker admin-kicker"><a href="{{ url_for('admin_interviews') }}">Interview records</a> / Report</p>
+      <h1>{{ iv.full_name }}'s Interview Report</h1>
+    {% else %}
+      <h1>Your Interview Report</h1>
+    {% endif %}
     <p>{{ iv.category }}, {{ iv.difficulty }}{% if iv.completed_at %}, {{ iv.completed_at.strftime('%b %d, %Y') }}{% endif %}</p>
   </div>
   {% if evaluation and evaluation.overall_score is number %}
@@ -78,7 +83,7 @@
       </ul>
     </details>
   </div>
-{% elif iv.status == 'completed' %}
+{% elif iv.status == 'completed' and not admin_view %}
   <div class="card notice">
     <h2>This interview hasn't been scored yet</h2>
     <p class="muted" style="margin-bottom:12px">Your answers are saved. Run the AI evaluation to get your scores and feedback.</p>
@@ -152,7 +157,7 @@
 <div class="card" style="margin-top:14px">
   <div class="fb-head">
     {{ robot("happy", "robot-sm") }}
-    <div><h2>Feedback from your interviewer</h2><p class="muted">AIMIS Bot reviewed all your answers.</p></div>
+    <div><h2>Feedback from {{ 'the' if admin_view else 'your' }} interviewer</h2><p class="muted">AIMIS Bot reviewed all {{ 'the' if admin_view else 'your' }} answers.</p></div>
   </div>
   <div class="grid-2" style="margin-top:0">
     <div class="fb-box fb-good"><h3>Strengths</h3><p>{{ fb.strengths }}</p></div>
@@ -164,11 +169,12 @@
 
 {# ---- Each question and answer ---- #}
 <div class="card" style="margin-top:14px">
-  <h2>Your Answers</h2>
+  <h2>{{ 'Answers' if admin_view else 'Your Answers' }}</h2>
+  {% if admin_view %}<p class="muted small">Transcripts and recordings are private to the student. Only scores are shown.</p>{% endif %}
   {% for a in answers %}
     <div class="answer">
       <h3>Q{{ a.question_order }}. {{ a.question_text }}</h3>
-      <p class="transcript">{{ a.transcript or "(no answer)" }}</p>
+      {% if not admin_view %}<p class="transcript">{{ a.transcript or "(no answer)" }}</p>{% endif %}
 
       {% if a.audio_path %}
         <audio controls preload="none" src="{{ url_for('audio_file', filename=a.audio_path.split('/')[-1]) }}"></audio>
@@ -218,7 +224,12 @@
 </div>
 
 <div class="btn-row" style="margin-top:18px">
-  <a href="{{ url_for('dashboard') }}" class="btn btn-outline">Back to dashboard</a>
-  <a href="{{ url_for('start_interview') }}" class="btn">Start another interview</a>
+  {% if admin_view %}
+    <a href="{{ url_for('admin_interviews') }}" class="btn btn-outline">Back to interview records</a>
+    <a href="{{ url_for('admin_user', user_id=iv.user_id) }}" class="btn">See {{ iv.full_name.split(' ')[0] }}'s progress</a>
+  {% else %}
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline">Back to dashboard</a>
+    <a href="{{ url_for('start_interview') }}" class="btn">Start another interview</a>
+  {% endif %}
 </div>
 {% endblock %}

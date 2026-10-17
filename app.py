@@ -380,10 +380,15 @@ def login():
         conn.close()
 
         if user and check_password_hash(user["password"], password):
+            if not user.get("is_active", 1):
+                flash("This account has been deactivated. Please contact the AIMIS administrator.")
+                return redirect(url_for("login"))
             session.clear()
             session["user_id"] = user["user_id"]
             session["full_name"] = user["full_name"]
             session["role"] = user["role"]
+            if user["role"] == "admin":
+                return redirect(url_for("admin_overview"))
             return redirect(url_for("dashboard"))
 
         flash("Incorrect email or password.")
@@ -814,19 +819,8 @@ def retry_evaluation(interview_id):
     return redirect(url_for("interview_summary", interview_id=interview_id))
 
 
-@app.route("/interview/<int:interview_id>/summary")
-@login_required
-def interview_summary(interview_id):
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM interviews WHERE interview_id = %s AND user_id = %s",
-                   (interview_id, session["user_id"]))
-    iv = cursor.fetchone()
-    if not iv:
-        conn.close()
-        flash("Interview not found.")
-        return redirect(url_for("dashboard"))
-
+def load_report(cursor, interview_id):
+    """Answers, scores and feedback for one interview (used by the student report and the admin view)."""
     cursor.execute("""SELECT iq.question_order, qb.question_text, r.response_id, r.transcript, r.audio_path,
                              n.relevance_score, n.clarity_score, n.completeness_score, n.grammar_score,
                              n.word_count, n.vocabulary_diversity, n.keyword_count, n.keywords_found,
@@ -850,6 +844,23 @@ def interview_summary(interview_id):
     cursor.execute("SELECT * FROM feedback WHERE interview_id = %s ORDER BY created_at DESC LIMIT 1",
                    (interview_id,))
     fb = cursor.fetchone()
+    return answers, evaluation, fb
+
+
+@app.route("/interview/<int:interview_id>/summary")
+@login_required
+def interview_summary(interview_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM interviews WHERE interview_id = %s AND user_id = %s",
+                   (interview_id, session["user_id"]))
+    iv = cursor.fetchone()
+    if not iv:
+        conn.close()
+        flash("Interview not found.")
+        return redirect(url_for("dashboard"))
+
+    answers, evaluation, fb = load_report(cursor, interview_id)
     conn.close()
     return render_template("interview_summary.html", iv=iv, answers=answers,
                            evaluation=evaluation, fb=fb)
@@ -879,6 +890,12 @@ def audio_file(filename):
     except InvalidToken:
         abort(500)   # wrong key or damaged file
     return Response(audio_bytes, mimetype="audio/wav")
+
+
+# Admin panel pages (placed here so every function above already exists)
+import admin
+from ai_service import generate_questions
+admin.register(app, get_db, load_report, generate_questions)
 
 
 if __name__ == "__main__":

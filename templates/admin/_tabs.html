@@ -1,0 +1,7 @@
+{# Admin section tabs. Set `active` in the route. #}
+<nav class="admin-tabs" aria-label="Admin sections">
+  <a href="{{ url_for('admin_overview') }}" class="{{ 'active' if active == 'overview' }}">Overview</a>
+  <a href="{{ url_for('admin_users') }}" class="{{ 'active' if active == 'users' }}">Users</a>
+  <a href="{{ url_for('admin_interviews') }}" class="{{ 'active' if active == 'interviews' }}">Interview records</a>
+  <a href="{{ url_for('admin_questions') }}" class="{{ 'active' if active == 'questions' }}">Questions</a>
+</nav>

@@ -1,0 +1,10 @@
+{% macro score(v) -%}
+  {%- if v is number -%}
+    <span class="score-chip {{ 'good' if v >= 75 else 'ok' if v >= 60 else 'low' }}">{{ "%.0f" | format(v) }}%</span>
+  {%- else -%}<span class="muted">–</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro status(s) -%}
+  <span class="badge {{ 'badge-good' if s == 'completed' else 'badge-warn' if s == 'in_progress' else '' }}">
+    {{ {'completed': 'Completed', 'in_progress': 'Unfinished', 'cancelled': 'Cancelled'}.get(s, s) }}</span>
+{%- endmacro %}

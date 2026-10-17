@@ -185,3 +185,39 @@ def transcribe_answer(question_text, audio_bytes):
         TRANSCRIBE_PROMPT.format(question=question_text),
         types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")],
         thinking_level="minimal")
+
+
+QUESTION_PROMPT = """You write questions for a mock job interview that practices SOFT SKILLS only.
+The candidates are college students and fresh graduates in the Philippines.
+
+Soft skill (category): {category}
+Difficulty: {difficulty}
+- Beginner: general, friendly questions about everyday school, group work, or personal habits.
+- Intermediate: questions about specific real situations ("Tell me about a time...").
+- Advanced: harder situations with pressure, conflict, failure, or difficult trade-offs.
+
+Rules:
+- Write exactly {count} NEW questions for this category and difficulty.
+- One sentence each, in clear simple English, answerable in 1 to 3 minutes by speaking.
+- No technical, job-specific, or personal/sensitive questions (no health, religion, family problems, money, politics).
+- Do not repeat or closely paraphrase any of these existing questions:
+{existing}
+
+Return only JSON in exactly this format:
+{{"questions": ["...", "..."]}}"""
+
+
+def generate_questions(category, difficulty, count, existing):
+    """Ask Gemini for new interview questions. Returns a list of question strings."""
+    sample = "\n".join(f"- {q}" for q in existing[:40]) or "- (none yet)"
+    result = _generate(QUESTION_PROMPT.format(category=category, difficulty=difficulty,
+                                              count=count, existing=sample), thinking_level="low")
+    questions = result.get("questions", []) if isinstance(result, dict) else []
+    seen = {q.strip().lower() for q in existing}
+    clean = []
+    for q in questions:
+        q = " ".join(str(q).split())
+        if 15 <= len(q) <= 300 and q.lower() not in seen:
+            seen.add(q.lower())
+            clean.append(q)
+    return clean[:count]

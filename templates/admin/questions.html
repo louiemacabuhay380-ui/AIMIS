@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Questions · Admin · AIMIS{% endblock %}
+{% block content %}
+{% set here = request.full_path %}
+<div class="page-head admin-head">
+  <div><p class="room-kicker admin-kicker">Admin panel</p><h1>Questions</h1>
+    <p>The AI writes new soft-skill questions. You review them before students see them.</p></div>
+</div>
+{% include "admin/_tabs.html" %}
+
+{% if not ready %}
+  <div class="card notice">
+    <h2>One database update is needed</h2>
+    <p class="muted">Run <b>block 6</b> of <code>database/schema_updates.sql</code> in SQLyog, then reload this page.</p>
+  </div>
+{% else %}
+
+<div class="grid-2 admin-row">
+  <form method="POST" action="{{ url_for('admin_questions_generate') }}" class="card form generate-card"
+        onsubmit="this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Writing questions...';">
+    <h2>Generate questions with AI</h2>
+    <p class="muted small">Gemini writes new questions that don't repeat existing ones. They wait for your review.</p>
+    <div class="form-row">
+      <label>Skill<select name="category" required>
+        {% for c in cats %}<option {{ 'selected' if category == c }}>{{ c }}</option>{% endfor %}</select></label>
+      <label>Difficulty<select name="difficulty" required>
+        {% for d in difficulties %}<option {{ 'selected' if difficulty == d }}>{{ d }}</option>{% endfor %}</select></label>
+      <label>How many<input name="count" type="number" min="1" max="10" value="5" class="num-input"></label>
+    </div>
+    <input type="hidden" name="next" value="{{ here }}">
+    <button type="submit" class="btn">Generate questions</button>
+  </form>
+
+  <form method="POST" action="{{ url_for('admin_question_add') }}" class="card form">
+    <h2>Add your own question</h2>
+    <label>Question<input name="question_text" placeholder="Tell me about a time you..." required minlength="15"></label>
+    <div class="form-row">
+      <label>Skill<input name="category" list="catList" value="{{ category or (cats[0] if cats) }}" required></label>
+      <label>Difficulty<select name="difficulty">
+        {% for d in difficulties %}<option {{ 'selected' if difficulty == d }}>{{ d }}</option>{% endfor %}</select></label>
+    </div>
+    <datalist id="catList">{% for c in cats %}<option value="{{ c }}">{% endfor %}</datalist>
+    <input type="hidden" name="next" value="{{ here }}">
+    <button type="submit" class="btn btn-outline">Add question</button>
+  </form>
+</div>
+
+<div class="card table-card admin-row">
+  <div class="q-toolbar">
+    <div class="segmented">
+      {% for v, l, n in [("active", "In use", counts.active), ("pending", "To review", counts.pending), ("off", "Turned off", counts.off)] %}
+        <a href="{{ url_for('admin_questions', view=v, category=category, difficulty=difficulty) }}"
+           class="{{ 'active' if view == v }}">{{ l }} <span class="count">{{ n or 0 }}</span></a>
+      {% endfor %}
+    </div>
+    <form method="GET" class="q-filter">
+      <input type="hidden" name="view" value="{{ view }}">
+      <select name="category" onchange="this.form.submit()" aria-label="Skill"><option value="">All skills</option>
+        {% for c in cats %}<option {{ 'selected' if category == c }}>{{ c }}</option>{% endfor %}</select>
+      <select name="difficulty" onchange="this.form.submit()" aria-label="Difficulty"><option value="">All levels</option>
+        {% for d in difficulties %}<option {{ 'selected' if difficulty == d }}>{{ d }}</option>{% endfor %}</select>
+    </form>
+  </div>
+
+  {% if view == 'pending' and questions %}
+    <form method="POST" action="{{ url_for('admin_questions_approve_all') }}" class="approve-all"
+          onsubmit="return confirm('Approve all {{ questions | length }} questions shown?');">
+      {% for q in questions %}<input type="hidden" name="ids" value="{{ q.question_id }}">{% endfor %}
+      <input type="hidden" name="next" value="{{ here }}">
+      <button class="btn btn-sm" type="submit">Approve all {{ questions | length }} shown</button>
+    </form>
+  {% endif %}
+
+  <ul class="q-list">
+  {% for q in questions %}
+    <li class="q-item">
+      <div class="q-main">
+        <p class="q-text">{{ q.question_text }}</p>
+        <p class="q-meta">
+          <span class="badge">{{ q.category }}</span> <span class="badge">{{ q.difficulty }}</span>
+          {% if q.source == 'ai' %}<span class="badge badge-ai">AI-written</span>{% elif q.source == 'admin' %}<span class="badge">Added by admin</span>{% endif %}
+          <span class="muted small">Asked {{ q.times_asked }} time{{ 's' if q.times_asked != 1 }}</span>
+        </p>
+        <details class="q-edit">
+          <summary class="small">Edit</summary>
+          <form method="POST" action="{{ url_for('admin_question_action', question_id=q.question_id, action='edit') }}" class="form-row">
+            <input name="question_text" value="{{ q.question_text }}" required minlength="15" class="grow">
+            <select name="difficulty">{% for d in difficulties %}<option {{ 'selected' if q.difficulty == d }}>{{ d }}</option>{% endfor %}</select>
+            <input type="hidden" name="next" value="{{ here }}">
+            <button class="btn btn-sm" type="submit">Save</button>
+          </form>
+        </details>
+      </div>
+      <div class="q-actions">
+        {% if q.review_status == 'pending' %}
+          {% for action, label, cls in [("approve", "Approve", "btn"), ("reject", "Reject", "btn btn-outline")] %}
+            <form method="POST" action="{{ url_for('admin_question_action', question_id=q.question_id, action=action) }}">
+              <input type="hidden" name="next" value="{{ here }}"><button class="{{ cls }} btn-sm" type="submit">{{ label }}</button></form>
+          {% endfor %}
+        {% elif q.is_active %}
+          <form method="POST" action="{{ url_for('admin_question_action', question_id=q.question_id, action='turn_off') }}">
+            <input type="hidden" name="next" value="{{ here }}"><button class="btn btn-outline btn-sm" type="submit">Turn off</button></form>
+        {% else %}
+          <form method="POST" action="{{ url_for('admin_question_action', question_id=q.question_id, action='turn_on') }}">
+            <input type="hidden" name="next" value="{{ here }}"><button class="btn btn-sm" type="submit">Turn on</button></form>
+        {% endif %}
+      </div>
+    </li>
+  {% else %}
+    <li class="muted q-empty">{% if view == 'pending' %}Nothing to review. Use "Generate questions with AI" above.{% else %}No questions here.{% endif %}</li>
+  {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endblock %}

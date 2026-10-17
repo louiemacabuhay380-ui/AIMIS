@@ -68,6 +68,10 @@
         {% if session.get('user_id') %}
           <a href="{{ url_for('dashboard') }}"
              class="nav-link {{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a>
+          {% if session.get('role') == 'admin' %}
+            <a href="{{ url_for('admin_overview') }}"
+               class="nav-link {{ 'active' if request.endpoint and request.endpoint.startswith('admin') }}">Admin</a>
+          {% endif %}
         {% endif %}
 
         <!-- Theme switch: left = light, right = dark -->

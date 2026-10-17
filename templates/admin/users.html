@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% from "admin/_macros.html" import score %}
+{% block title %}Users · Admin · AIMIS{% endblock %}
+{% block content %}
+<div class="page-head admin-head">
+  <div><p class="room-kicker admin-kicker">Admin panel</p><h1>Users</h1></div>
+</div>
+{% include "admin/_tabs.html" %}
+
+<form method="GET" class="filter-bar card">
+  <label class="grow">Search
+    <input name="q" value="{{ q }}" placeholder="Name or email">
+  </label>
+  <button type="submit" class="btn">Search</button>
+  {% if q %}<a href="{{ url_for('admin_users') }}" class="btn btn-outline">Clear</a>{% endif %}
+</form>
+
+<div class="card table-card">
+  <p class="muted small table-note">{{ users | length }} account{{ 's' if users | length != 1 }}{% if q %} matching "{{ q }}"{% endif %}</p>
+  <div class="table-scroll">
+  <table class="data-table">
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th class="num">Interviews</th><th class="num">Avg score</th><th>Last practice</th><th></th></tr></thead>
+    <tbody>
+    {% for u in users %}
+      {% set active_acct = u.is_active if u.is_active is defined and u.is_active is not none else 1 %}
+      <tr class="{{ 'row-muted' if not active_acct }}">
+        <td><a href="{{ url_for('admin_user', user_id=u.user_id) }}"><b>{{ u.full_name }}</b></a></td>
+        <td>{{ u.email }}</td>
+        <td>{% if u.role == 'admin' %}<span class="badge badge-admin">Admin</span>{% else %}Student{% endif %}</td>
+        <td>{% if active_acct %}<span class="badge badge-good">Active</span>{% else %}<span class="badge">Deactivated</span>{% endif %}</td>
+        <td class="num">{{ u.done }}{% if u.total != u.done %} <span class="muted small">/ {{ u.total }}</span>{% endif %}</td>
+        <td class="num">{{ score(u.avg_score) }}</td>
+        <td>{{ u.last_at.strftime('%b %d, %Y') if u.last_at else '–' }}</td>
+        <td class="num"><a href="{{ url_for('admin_user', user_id=u.user_id) }}">Manage</a></td>
+      </tr>
+    {% else %}
+      <tr><td colspan="8" class="muted">No users found.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}
