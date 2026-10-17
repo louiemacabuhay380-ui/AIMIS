@@ -17,18 +17,11 @@
   {%- if value is number -%}{{ fmt | format(value) }}{%- else -%}–{%- endif -%}
 {%- endmacro %}
 
-<<<<<<< HEAD
 {% from "_robot.html" import robot %}
 {% block content %}
 <div class="page-head">
   <div>
     <h1>Your Interview Report</h1>
-=======
-{% block content %}
-<div class="page-head">
-  <div>
-    <h1>Interview Results</h1>
->>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
     <p>{{ iv.category }}, {{ iv.difficulty }}{% if iv.completed_at %}, {{ iv.completed_at.strftime('%b %d, %Y') }}{% endif %}</p>
   </div>
   {% if evaluation and evaluation.overall_score is number %}
@@ -125,14 +118,10 @@
 {# ---- AI feedback ---- #}
 {% if fb %}
 <div class="card" style="margin-top:14px">
-<<<<<<< HEAD
   <div class="fb-head">
     {{ robot("happy", "robot-sm") }}
     <div><h2>Feedback from your interviewer</h2><p class="muted">AIMIS Bot reviewed all your answers.</p></div>
   </div>
-=======
-  <h2>AI Feedback</h2>
->>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
   <div class="grid-2" style="margin-top:0">
     <div class="fb-box fb-good"><h3>Strengths</h3><p>{{ fb.strengths }}</p></div>
     <div class="fb-box fb-improve"><h3>Areas to Improve</h3><p>{{ fb.areas_to_improve }}</p></div>

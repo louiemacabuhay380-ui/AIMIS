@@ -121,7 +121,6 @@ p  { margin: 0 0 8px; }
 .nav-link:hover { background: var(--surface-2); color: var(--text); }
 .nav-link.active { background: var(--primary-soft); color: var(--primary); }
 
-<<<<<<< HEAD
 /* Theme switch: sun | track | moon. Knob on the left = light, on the right = dark */
 .theme-switch {
   display: inline-flex; align-items: center; gap: 8px;
@@ -146,22 +145,6 @@ p  { margin: 0 0 8px; }
 .theme-switch[aria-checked="true"] .ts-knob { left: 23px; }
 .theme-switch[aria-checked="true"] .ts-sun { color: var(--muted); opacity: 0.45; }
 .theme-switch[aria-checked="true"] .ts-moon { color: #a5b4fc; opacity: 1; }
-=======
-.theme-toggle {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 12px;
-  border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-2);
-  color: var(--text);
-  font: inherit; font-weight: 600; font-size: 14px;
-  cursor: pointer;
-}
-.theme-toggle:hover { border-color: var(--primary); }
-.theme-toggle .icon-sun { display: none; }
-[data-theme="dark"] .theme-toggle .icon-sun { display: inline; }
-[data-theme="dark"] .theme-toggle .icon-moon { display: none; }
->>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
 
 .user-avatar {
   width: 36px; height: 36px;
@@ -654,7 +637,6 @@ input:focus, select:focus { outline: 3px solid var(--primary-soft); border-color
    ================================================================ */
 .robot { width: 150px; height: auto; overflow: visible; }
 .ai-box { padding-bottom: 40px; }
-<<<<<<< HEAD
 
 /* white glossy robot with a dark visor face and glowing cyan features */
 .rb-shell     { fill: url(#rbShell); stroke: #b9c3ce; stroke-width: 1.4; }
@@ -710,29 +692,6 @@ input:focus, select:focus { outline: 3px solid var(--primary-soft); border-color
 @keyframes rb-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
 @keyframes rb-glow { from { opacity: 0.55; } to { opacity: 1; } }
 @keyframes rb-look { 0%, 40%, 100% { transform: translateX(0); } 48%, 58% { transform: translateX(3px); } 66%, 76% { transform: translateX(-3px); } }
-=======
-.rb-head  { fill: #eef3fb; stroke: #c9d6ea; stroke-width: 2; }
-.rb-ear   { fill: #8fb3ff; }
-.rb-screen { fill: #13213d; }
-.rb-eye   { fill: #67e8f9; transform-box: fill-box; transform-origin: center; animation: rb-blink 4.2s infinite; }
-.rb-shine { fill: #ffffff; opacity: 0.85; }
-.rb-cheek { fill: #fb7185; opacity: 0.55; }
-.rb-mouth { fill: #67e8f9; }
-.rb-antenna { stroke: #c9d6ea; stroke-width: 4; stroke-linecap: round; }
-.rb-light { fill: #8fb3ff; transition: fill 0.2s; }
-.rb-body  { fill: #dbe5f5; stroke: #c9d6ea; stroke-width: 2; }
-.rb-chest { fill: #8fb3ff; transition: fill 0.2s; }
-
-.ai-box.speaking .robot { animation: rb-bob 0.9s ease-in-out infinite; }
-.ai-box.speaking .rb-light,
-.ai-box.speaking .rb-chest { fill: #67e8f9; animation: rb-glow 0.6s ease-in-out infinite alternate; }
-.iv-layout.recording .rb-light { fill: #f87171; }
-.iv-layout.recording .rb-eye { ry: 6; }
-
-@keyframes rb-blink { 0%, 93%, 100% { transform: scaleY(1); } 96% { transform: scaleY(0.12); } }
-@keyframes rb-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
-@keyframes rb-glow { from { opacity: 0.6; } to { opacity: 1; } }
->>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
 
 /* ================================================================
    Bigger interview layout: wider page, boxes fill the window height
@@ -783,7 +742,6 @@ input:focus, select:focus { outline: 3px solid var(--primary-soft); border-color
 @media (max-width: 760px) {
   .iv-head { align-items: flex-start; }
 }
-<<<<<<< HEAD
 
 
 /* ================================================================
@@ -1082,5 +1040,3 @@ fieldset.field legend, .field-label { font-weight: 700; padding: 0; margin-botto
   .room h1 { font-size: 26px; }
 }
 @media (prefers-reduced-motion: reduce) { .mascot .robot, .room-dot { animation: none !important; } }
-=======
->>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39

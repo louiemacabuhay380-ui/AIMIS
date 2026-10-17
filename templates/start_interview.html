@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-<<<<<<< HEAD
 {% from "_robot.html" import robot %}
 {% from "_icons.html" import skill_icon, ui_icon, SKILLS %}
 {% block title %}Start interview · AIMIS{% endblock %}
@@ -10,21 +9,11 @@
   <div>
     <h1>Set up your mock interview</h1>
     <p>Choose a soft skill, how hard the questions should be, and how many you want.</p>
-=======
-{% block title %}Start interview · AIMIS{% endblock %}
-
-{% block content %}
-<div class="page-head">
-  <div>
-    <h1>Start a mock interview</h1>
-    <p>Choose what you want to practice. All questions focus on soft skills.</p>
->>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
   </div>
 </div>
 
 <ol class="how-steps">
   <li><span class="step-num">1</span><span><b>Check devices</b>Make sure your microphone and camera work.</span></li>
-<<<<<<< HEAD
   <li><span class="step-num">2</span><span><b>Answer out loud</b>The interviewer asks each question; you answer by speaking.</span></li>
   <li><span class="step-num">3</span><span><b>Get feedback</b>See your scores and tips to improve.</span></li>
 </ol>
@@ -61,28 +50,6 @@
 
     <label class="field-label">3. Number of questions
       <input name="number_of_questions" type="number" min="1" max="10" value="3" class="num-input">
-=======
-  <li><span class="step-num">2</span><span><b>Answer out loud</b>The interviewer asks each question; you record your answer.</span></li>
-  <li><span class="step-num">3</span><span><b>Get feedback</b>See your scores and tips to improve.</span></li>
-</ol>
-
-<div class="card" style="max-width:680px">
-  <form method="POST" class="form">
-    <label>Category
-      <select name="category">
-        {% for c in categories %}<option>{{ c }}</option>{% endfor %}
-      </select>
-      <span class="field-hint">The soft skill to practice. Questions from this category are picked at random, and ones you haven't answered yet come first.</span>
-    </label>
-    <label>Difficulty
-      <select name="difficulty">
-        <option>Beginner</option><option>Intermediate</option><option>Advanced</option>
-      </select>
-      <span class="field-hint">Beginner questions are general; Advanced ones ask about harder real situations.</span>
-    </label>
-    <label>Number of questions
-      <input name="number_of_questions" type="number" min="1" max="10" value="3">
->>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
       <span class="field-hint">1 to 10. Each answer can be up to 3 minutes.</span>
     </label>
 
@@ -94,7 +61,6 @@
     </label>
 
     <div class="btn-row">
-<<<<<<< HEAD
       <button type="submit" class="btn btn-lg">{{ ui_icon("play", 16) }} Begin interview</button>
       <a href="{{ url_for('dashboard') }}" class="btn btn-outline btn-lg">Back</a>
     </div>
@@ -109,11 +75,5 @@
       <li>{{ ui_icon("chat", 16) }} Answer with a real example</li>
     </ul>
   </aside>
-=======
-      <button type="submit" class="btn btn-lg">Begin interview</button>
-      <a href="{{ url_for('dashboard') }}" class="btn btn-outline btn-lg">Back</a>
-    </div>
-  </form>
->>>>>>> 48434bcac8cbbbf5184c3fd5947adbd192fa5a39
 </div>
 {% endblock %}
