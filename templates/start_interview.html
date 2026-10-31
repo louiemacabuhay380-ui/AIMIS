@@ -55,9 +55,17 @@
 
     <label class="consent">
       <input type="checkbox" name="consent" value="yes" required>
-      <span>I agree to have my voice recorded and my camera used during this interview. My voice
-      recordings are processed by a third-party AI service. My camera is analyzed only on this
-      device; video is never recorded or uploaded, and only the behavior scores are saved.</span>
+      <span>I agree to have my voice recorded and my camera used during this interview.
+        <ul class="consent-list">
+          <li>My voice recordings are stored encrypted and sent to <b>Google Gemini</b>, a third-party AI
+            service, to turn my speech into text and score my answers. Google's free service may use this
+            content to improve its products.</li>
+          <li>My camera is analyzed only on this device. Video is never recorded or uploaded; only the
+            behavior scores are saved.</li>
+          <li>Recordings are deleted automatically after {{ recording_days }} days. I can delete all my data
+            anytime on the <a href="{{ url_for('my_data') }}" target="_blank">My data</a> page.</li>
+        </ul>
+      </span>
     </label>
 
     <div class="btn-row">

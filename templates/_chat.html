@@ -1,0 +1,224 @@
+{# AIMIS Coach: chatbot about the student's own interviews (RAG).
+   interview_id: set it on a report page so questions are about that interview first. #}
+{% from "_robot.html" import robot %}
+{% macro chat_widget(interview_id=None) %}
+{% set on_report = interview_id is not none %}
+<div class="coach" id="coach" data-interview="{{ interview_id or '' }}"
+     data-report-url="{{ url_for('interview_summary', interview_id=987654321) }}">
+  <button type="button" class="coach-fab" id="coachFab" aria-expanded="false" aria-controls="coachPanel">
+    <span class="coach-fab-face">{{ robot("happy", "robot-fab") }}</span>
+    <span class="coach-fab-text">Ask AIMIS Coach</span>
+  </button>
+
+  <section class="coach-panel" id="coachPanel" hidden aria-label="AIMIS Coach chat">
+    <header class="coach-head">
+      <span class="coach-avatar">{{ robot("happy", "robot-fab", defs=false) }}</span>
+      <div class="coach-title">
+        <b>AIMIS Coach</b>
+        <span>{{ 'About this interview' if on_report else 'About all your interviews' }}</span>
+      </div>
+      <span class="coach-status" id="coachStatus" data-state="checking">Checking AI…</span>
+      <button type="button" class="coach-icon" id="coachClear" title="Clear this chat" aria-label="Clear this chat">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
+      </button>
+      <button type="button" class="coach-icon" id="coachClose" title="Close" aria-label="Close chat">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </header>
+
+    <div class="coach-body" id="coachBody" aria-live="polite">
+      <div class="coach-msg bot coach-intro">
+        Hi! I'm AIMIS Coach. Ask me anything about {{ 'this interview' if on_report else 'your mock interviews' }}:
+        where you were weak, why a score is low, or how to improve an answer. I only use your own results,
+        and I'll tell you the exact question. You can ask in English, Filipino or Taglish.
+      </div>
+    </div>
+
+    <div class="coach-suggest" id="coachSuggest">
+      {% if on_report %}
+        {% set ideas = ["Which answer was my weakest, and why?",
+                        "Saang part ako mahina sa critical thinking?",
+                        "How can I improve my answer to question 1?",
+                        "Bakit mababa ang speech score ko?"] %}
+      {% else %}
+        {% set ideas = ["What should I focus on next?",
+                        "Saang interview ako mahina sa critical thinking?",
+                        "How much have I improved since my first interview?",
+                        "Which of my answers was the best?"] %}
+      {% endif %}
+      {% for idea in ideas %}<button type="button" class="coach-chip">{{ idea }}</button>{% endfor %}
+    </div>
+
+    <form class="coach-form" id="coachForm">
+      <textarea id="coachInput" rows="1" maxlength="500" placeholder="Ask about your interviews…" aria-label="Your question"></textarea>
+      <button type="submit" class="btn coach-send" id="coachSend" aria-label="Send">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+      </button>
+    </form>
+  </section>
+</div>
+
+<script>
+(function () {
+  const root = document.getElementById("coach");
+  const fab = document.getElementById("coachFab");
+  const panel = document.getElementById("coachPanel");
+  const body = document.getElementById("coachBody");
+  const form = document.getElementById("coachForm");
+  const input = document.getElementById("coachInput");
+  const send = document.getElementById("coachSend");
+  const status = document.getElementById("coachStatus");
+  const suggest = document.getElementById("coachSuggest");
+  const interviewId = root.dataset.interview || null;
+  const reportUrl = root.dataset.reportUrl;
+  let loaded = false, busy = false;
+
+  // ---- open / close
+  function setOpen(open) {
+    panel.hidden = !open;
+    fab.setAttribute("aria-expanded", open);
+    root.classList.toggle("is-open", open);
+    if (open) {
+      if (!loaded) { loaded = true; loadHistory(); checkStatus(); }
+      setTimeout(function () { input.focus(); }, 50);
+    }
+  }
+  fab.addEventListener("click", function () { setOpen(panel.hidden); });
+  document.getElementById("coachClose").addEventListener("click", function () { setOpen(false); fab.focus(); });
+  document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !panel.hidden) setOpen(false); });
+
+  // ---- show a message (plain text with **bold** and "- " lists; everything else is escaped)
+  function esc(s) {
+    return s.replace(/[&<>"']/g, function (c) { return ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]; });
+  }
+  function render(text) {
+    const lines = esc(text.trim()).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").split("\n");
+    let html = "", inList = false;
+    lines.forEach(function (line) {
+      const item = line.match(/^\s*(?:[-*•]|\d+[.)])\s+(.*)$/);
+      if (item) {
+        if (!inList) { html += "<ul>"; inList = true; }
+        html += "<li>" + item[1] + "</li>";
+      } else {
+        if (inList) { html += "</ul>"; inList = false; }
+        if (line.trim()) html += "<p>" + line + "</p>";
+      }
+    });
+    return html + (inList ? "</ul>" : "");
+  }
+  function sourceLink(s) {
+    const a = document.createElement("a");
+    a.className = "coach-source";
+    a.href = reportUrl.replace("987654321", s.interview_id) + (s.question ? "#q" + s.question : "");
+    a.textContent = s.label;
+    return a;
+  }
+  function addMessage(role, text, sources) {
+    const div = document.createElement("div");
+    div.className = "coach-msg " + role;
+    if (role === "bot") div.innerHTML = render(text); else div.textContent = text;
+    body.appendChild(div);
+    if (sources && sources.length) addSources(div, sources);
+    body.scrollTop = body.scrollHeight;
+    return div;
+  }
+  function addSources(div, sources) {
+    const box = document.createElement("div");
+    box.className = "coach-sources";
+    const label = document.createElement("span");
+    label.textContent = "Based on:";
+    box.appendChild(label);
+    sources.forEach(function (s) { box.appendChild(sourceLink(s)); });
+    div.appendChild(box);
+  }
+
+  // ---- earlier messages and AI status
+  function query() { return interviewId ? "?interview_id=" + encodeURIComponent(interviewId) : ""; }
+  function loadHistory() {
+    fetch("{{ url_for('chat_history') }}" + query()).then(function (r) { return r.json(); }).then(function (data) {
+      (data.messages || []).forEach(function (m) { addMessage(m.role, m.content, m.sources); });
+      if ((data.messages || []).length) suggest.hidden = true;
+      if (data.setup) addMessage("bot", data.setup);
+    }).catch(function () {});
+  }
+  function checkStatus() {
+    fetch("{{ url_for('chat_status') }}").then(function (r) { return r.json(); }).then(function (s) {
+      if (s.running && s.has_chat_model && s.has_embed_model) {
+        status.dataset.state = "ok"; status.textContent = "Offline AI";
+        status.title = "Running on this computer with Ollama (" + s.chat_model + " + " + s.embed_model + ")";
+      } else if (s.running) {
+        status.dataset.state = "warn"; status.textContent = "Model missing";
+        status.title = "Ollama is running but a model isn't downloaded. Run: ollama pull " +
+          (!s.has_chat_model ? s.chat_model : s.embed_model);
+      } else {
+        status.dataset.state = "warn"; status.textContent = "Ollama off";
+        status.title = "Ollama isn't running, so replies use the Gemini backup (if set) and search uses keywords only.";
+      }
+    }).catch(function () { status.textContent = ""; });
+  }
+
+  // ---- ask a question; the reply streams in word by word
+  function ask(text) {
+    text = text.trim();
+    if (!text || busy) return;
+    busy = true; send.disabled = true; suggest.hidden = true;
+    addMessage("user", text);
+    input.value = ""; grow();
+    const bot = addMessage("bot", "");
+    bot.classList.add("typing");
+    bot.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+
+    fetch("{{ url_for('chat_ask') }}", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({message: text, interview_id: interviewId})
+    }).then(function (res) {
+      if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || "Something went wrong."); });
+      let sources = [];
+      try { sources = JSON.parse(res.headers.get("X-Chat-Sources") || "[]"); } catch (e) {}
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let reply = "";
+      function pump() {
+        return reader.read().then(function (part) {
+          if (part.done) {
+            bot.classList.remove("typing");
+            bot.innerHTML = render(reply || "(No reply)");
+            if (sources.length) addSources(bot, sources);
+            body.scrollTop = body.scrollHeight;
+            return;
+          }
+          reply += decoder.decode(part.value, {stream: true});
+          bot.classList.remove("typing");
+          bot.innerHTML = render(reply);
+          body.scrollTop = body.scrollHeight;
+          return pump();
+        });
+      }
+      return pump();
+    }).catch(function (err) {
+      bot.classList.remove("typing");
+      bot.classList.add("error");
+      bot.textContent = err.message || "Couldn't reach the server.";
+    }).finally(function () { busy = false; send.disabled = false; input.focus(); });
+  }
+
+  form.addEventListener("submit", function (e) { e.preventDefault(); ask(input.value); });
+  input.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(input.value); }
+  });
+  function grow() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 120) + "px"; }
+  input.addEventListener("input", grow);
+  suggest.addEventListener("click", function (e) {
+    if (e.target.classList.contains("coach-chip")) ask(e.target.textContent);
+  });
+  document.getElementById("coachClear").addEventListener("click", function () {
+    if (busy) return;
+    fetch("{{ url_for('chat_clear') }}", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({interview_id: interviewId})}).then(function () {
+      body.querySelectorAll(".coach-msg:not(.coach-intro)").forEach(function (m) { m.remove(); });
+      suggest.hidden = false;
+    });
+  });
+})();
+</script>
+{% endmacro %}

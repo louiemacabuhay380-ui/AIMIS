@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}My data · AIMIS{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>My data</h1>
+    <p>What AIMIS keeps about you, where it goes, and how to delete it.</p>
+  </div>
+</div>
+
+<div class="bento bento-mydata">
+  <section class="tile tile-mydata-counts">
+    <h2>What AIMIS has saved</h2>
+    <div class="kv"><span>Interviews</span><span>{{ data.interviews }}</span></div>
+    <div class="kv"><span>Answers (transcripts, scores, feedback)</span><span>{{ data.answers }}</span></div>
+    <div class="kv"><span>Voice recordings still stored</span><span>{{ data.recordings }}</span></div>
+    <div class="kv"><span>AIMIS Coach chat messages</span><span>{{ data.chats }}</span></div>
+    <div class="kv"><span>Account</span><span>{{ session.full_name }}</span></div>
+  </section>
+
+  <section class="tile tile-mydata-flow">
+    <h2>Where your data goes</h2>
+    <ul class="data-flow">
+      <li><b>Camera:</b> analyzed only in your browser. Video is never recorded or uploaded; only scores such as eye contact are saved.</li>
+      <li><b>Voice:</b> each answer is recorded and stored <b>encrypted</b> on the AIMIS server. It is sent over a secure connection to
+        <b>Google Gemini</b>, a third-party AI service, to turn your speech into text and score your answers. Google's free service may use this content to improve its products.</li>
+      <li><b>Recordings are deleted automatically after {{ days }} days.</b> Your transcripts, scores and feedback stay until you delete them below.</li>
+      <li><b>AIMIS Coach:</b> runs on the AIMIS computer with a local AI (Ollama). If it isn't available, Gemini may be used as a backup.</li>
+      <li><b>Administrators</b> can see your name, scores and feedback, but not your recordings, transcripts or chats.</li>
+      <li><b>Your password</b> is stored as a one-way hash; nobody can read it.</li>
+    </ul>
+  </section>
+
+  <section class="tile tile-danger">
+    <h2>Delete my interviews</h2>
+    <p class="muted">Deletes all your interviews, recordings, transcripts, scores, feedback and chatbot history.
+      Your account stays, so you can keep practicing. This can't be undone.</p>
+    <form method="POST" action="{{ url_for('delete_my_interviews') }}" class="form"
+          onsubmit="return confirm('Delete ALL your interviews and recordings? This cannot be undone.');">
+      <label>Your password
+        <input name="password" type="password" required autocomplete="current-password">
+      </label>
+      <button type="submit" class="btn btn-danger">Delete my interviews</button>
+    </form>
+  </section>
+
+  <section class="tile tile-danger">
+    <h2>Delete my account</h2>
+    <p class="muted">Deletes your account and everything above. You will be logged out and can't log in again
+      with this email unless you register again. This can't be undone.</p>
+    <form method="POST" action="{{ url_for('delete_my_account') }}" class="form"
+          onsubmit="return confirm('Permanently delete your account and all your data?');">
+      <label>Your password
+        <input name="password" type="password" required autocomplete="current-password">
+      </label>
+      <label>Type DELETE to confirm
+        <input name="confirm" type="text" required autocomplete="off" placeholder="DELETE">
+      </label>
+      <button type="submit" class="btn btn-danger">Delete my account</button>
+    </form>
+  </section>
+</div>
+{% endblock %}

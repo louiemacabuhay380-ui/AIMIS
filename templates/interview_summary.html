@@ -18,38 +18,57 @@
 {%- endmacro %}
 
 {% from "_robot.html" import robot %}
+{% from "_chat.html" import chat_widget %}
 {% block content %}
 <div class="page-head">
   <div>
-    <h1>Your Interview Report</h1>
+    {% if admin_view %}
+      <p class="room-kicker admin-kicker"><a href="{{ url_for('admin_interviews') }}">Interview records</a> / Report</p>
+      <h1>{{ iv.full_name }}'s Interview Report</h1>
+    {% else %}
+      <h1>Your Interview Report</h1>
+    {% endif %}
     <p>{{ iv.category }}, {{ iv.difficulty }}{% if iv.completed_at %}, {{ iv.completed_at.strftime('%b %d, %Y') }}{% endif %}</p>
   </div>
-  {% if evaluation and evaluation.overall_score is number %}
-    <span class="badge badge-lg">Overall: {{ num(evaluation.overall_score) }}%</span>
-  {% endif %}
 </div>
 
+<div class="bento bento-report">
 {% if evaluation %}
-  {# ---- Score bars ---- #}
-  <div class="card">
-    {# Each part: its score, and how much it counts toward the Overall score #}
-    {% set bars = [("Response Quality", evaluation.response_quality_score, 60, "How good your answers were"),
-                   ("Speech Performance", evaluation.speech_performance_score, 25, "How you spoke"),
-                   ("Behavioral", evaluation.behavioral_score, 15, "Your body language on camera")] %}
-    {% set used = bars | selectattr(1, "number") | list %}
-    {% set weight_total = used | map(attribute=2) | sum %}
-    {% for label, value, weight, desc in used %}
-      {% set bar_style = "width: " ~ value ~ "%" %}
-      <div class="score-row">
-        <div class="label-line">
-          <span>{{ label }} <span class="weight-chip">counts {{ weight }}% of Overall</span></span>
-          <span>{{ num(value) }}%</span>
-        </div>
-        <div class="bar"><span style="{{ bar_style }}"></span></div>
-        <p class="score-desc">{{ desc }}</p>
-      </div>
-    {% endfor %}
+  {# Each part: its score, and how much it counts toward the Overall score #}
+  {% set bars = [("Response Quality", evaluation.response_quality_score, 60, "How good your answers were"),
+                 ("Speech Performance", evaluation.speech_performance_score, 25, "How you spoke"),
+                 ("Behavioral", evaluation.behavioral_score, 15, "Your body language on camera")] %}
+  {% set used = bars | selectattr(1, "number") | list %}
+  {% set weight_total = used | map(attribute=2) | sum %}
 
+  {# ---- Big tile: overall score ---- #}
+  <section class="tile tile-overall">
+    {{ robot("happy") }}
+    <span class="overall-num">{{ num(evaluation.overall_score) }}{% if evaluation.overall_score is number %}%{% endif %}</span>
+    <span class="overall-label">Overall score</span>
+    <span class="overall-note">{{ used | length }} of 3 parts scored</span>
+  </section>
+
+  {# ---- One tile per part ---- #}
+  {% for label, value, weight, desc in bars %}
+    <section class="tile tile-part">
+      <div class="part-head">
+        <span class="part-name">{{ label }}</span>
+        <span class="weight-chip">counts {{ weight }}%</span>
+      </div>
+      {% if value is number %}
+        <p class="part-value">{{ num(value) }}%</p>
+        <div class="bar"><span style="{{ 'width: ' ~ value ~ '%' }}"></span></div>
+        <p class="score-desc">{{ desc }}</p>
+      {% else %}
+        <p class="part-value muted">–</p>
+        <p class="score-desc">{{ 'No camera data for this interview.' if label == 'Behavioral' else 'Not available.' }}</p>
+      {% endif %}
+    </section>
+  {% endfor %}
+
+  {# ---- How the overall score was calculated ---- #}
+  <section class="tile tile-math">
     {# The Overall score worked out with this interview's own numbers #}
     {% if used and evaluation.overall_score is number %}
       <div class="overall-math">
@@ -77,15 +96,15 @@
         <li><b>Overall:</b> each score is multiplied by how much it counts (60%, 25%, and 15%), then added together. The percentages next to each bar are these weights, not your scores.</li>
       </ul>
     </details>
-  </div>
-{% elif iv.status == 'completed' %}
-  <div class="card notice">
+  </section>
+{% elif iv.status == 'completed' and not admin_view %}
+  <section class="tile tile-full notice">
     <h2>This interview hasn't been scored yet</h2>
     <p class="muted" style="margin-bottom:12px">Your answers are saved. Run the AI evaluation to get your scores and feedback.</p>
     <form method="POST" action="{{ url_for('retry_evaluation', interview_id=iv.interview_id) }}">
       <button type="submit" class="btn">Run AI evaluation</button>
     </form>
-  </div>
+  </section>
 {% endif %}
 
 {# ---- Speech and behavior totals across all answers ---- #}
@@ -96,8 +115,7 @@
 {% set scored  = answers | selectattr("relevance_score", "number") | list %}
 
 {% if spoken or watched %}
-<div class="grid-2" style="margin-top:14px">
-  <div class="card">
+  <section class="tile tile-half">
     <h2>Speech Analysis</h2>
     {% if spoken %}
       <div class="kv"><span>Speaking pace</span><span>{{ avg(spoken, "speaking_rate") }} WPM</span></div>
@@ -114,9 +132,9 @@
       <div class="kv"><span>Speaking time</span><span>{{ avg(voiced, "speech_ratio") }}%</span></div>
     {% endif %}
     {% if not spoken and not voiced %}<p class="muted">No speech data yet.</p>{% endif %}
-  </div>
+  </section>
 
-  <div class="card">
+  <section class="tile tile-half">
     <h2>Behavioral Analysis</h2>
     {% if watched %}
       <div class="kv"><span>Eye contact</span><span class="good">{{ avg(watched, "eye_contact_score") }}%</span></div>
@@ -133,43 +151,142 @@
     {% else %}
       <p class="muted">No camera data for this interview.</p>
     {% endif %}
-  </div>
-</div>
+  </section>
 {% endif %}
 
 {% if scored %}
-<div class="card" style="margin-top:14px">
+<section class="tile tile-third">
   <h2>Answer Analysis</h2>
   {% for label, key in [("Relevance", "relevance_score"), ("Answer clarity", "clarity_score"),
                         ("Completeness", "completeness_score"), ("Grammar", "grammar_score")] %}
     <div class="kv"><span>{{ label }}</span><span class="good">{{ avg(scored, key) }}%</span></div>
   {% endfor %}
-</div>
+
+  {# ---- This interview next to the student's earlier ones ---- #}
+  {% if progress %}
+    <h2 class="progress-title">Compared with {{ 'earlier' if admin_view else 'your earlier' }} interviews</h2>
+    <p class="muted small">Your average in the {{ progress.count }} interview{{ 's' if progress.count != 1 }} before this one.</p>
+    {% for r in progress.rows %}
+      <div class="kv progress-row">
+        <span>{{ r.label }}</span>
+        <span><span class="muted small">{{ r.before }}% → </span>{{ r.now }}%
+          <span class="delta {{ 'up' if r.diff > 0 else 'down' if r.diff < 0 else 'same' }}">{{ '+' if r.diff > 0 }}{{ r.diff }}</span></span>
+      </div>
+    {% endfor %}
+  {% endif %}
+</section>
 {% endif %}
 
 {# ---- AI feedback ---- #}
+{# One feedback card: which answer, what was good or weak, their words, the fix, and an example #}
+{% macro fb_card(i, title=none) %}
+  <div class="fb-item fb-{{ i.kind }}">
+    {% if title %}<span class="fb-card-title">{{ title }}</span>
+    {% elif i.answer_no %}<a class="ans-chip" href="#q{{ i.answer_no }}">Answer {{ i.answer_no }}</a>{% endif %}
+    <p class="fb-point">{{ i.point }}</p>
+    {% if i.quote and not admin_view %}<p class="fb-quote"><span class="fb-label">You said</span>“{{ i.quote }}”</p>{% endif %}
+    {% if i.fix %}<p class="fb-fix"><b>Do this:</b> {{ i.fix }}</p>{% endif %}
+    {% if i.example %}<p class="fb-example"><span class="fb-label">Try saying it like this</span>“{{ i.example | fill_in }}”</p>{% endif %}
+  </div>
+{% endmacro %}
+
 {% if fb %}
-<div class="card" style="margin-top:14px">
+{% set items = fb.feedback_items or [] %}
+<section class="tile {{ 'tile-wide' if scored else 'tile-full' }}">
   <div class="fb-head">
-    {{ robot("happy", "robot-sm") }}
-    <div><h2>Feedback from your interviewer</h2><p class="muted">AIMIS Bot reviewed all your answers.</p></div>
+    {{ robot("happy", "robot-sm", defs=not evaluation) }}
+    <div><h2>Feedback from {{ 'the' if admin_view else 'your' }} interviewer</h2>
+      <p class="muted">{% if items %}Each point is about a specific answer. Click "Answer" to see it.{% else %}AIMIS Bot reviewed all {{ 'the' if admin_view else 'your' }} answers.{% endif %}</p></div>
   </div>
-  <div class="grid-2" style="margin-top:0">
-    <div class="fb-box fb-good"><h3>Strengths</h3><p>{{ fb.strengths }}</p></div>
-    <div class="fb-box fb-improve"><h3>Areas to Improve</h3><p>{{ fb.areas_to_improve }}</p></div>
-  </div>
-  <div class="fb-box fb-tips"><h3>Recommendations</h3><p>{{ fb.recommendations }}</p></div>
-</div>
+
+  {% if items %}
+    {% for i in items | selectattr("kind", "equalto", "progress") %}
+      <p class="fb-banner fb-progress-note"><b>Compared with before:</b> {{ i.point }}</p>
+    {% endfor %}
+    <div class="fb-cols">
+      <div>
+        <h3 class="fb-col-title good">What you did well</h3>
+        {% for i in items | selectattr("kind", "equalto", "strength") %}{{ fb_card(i) }}{% else %}<p class="muted small">No clear strengths were found in this interview.</p>{% endfor %}
+      </div>
+      <div>
+        <h3 class="fb-col-title improve">What to improve</h3>
+        {% for i in items | selectattr("kind", "equalto", "improve") %}{{ fb_card(i) }}{% else %}<p class="muted small">Nothing major to fix in your answers.</p>{% endfor %}
+      </div>
+    </div>
+    {% set delivery = items | selectattr("kind", "equalto", "delivery") | list %}
+    {% if delivery %}
+      <h3 class="fb-col-title">How you spoke and looked</h3>
+      <div class="fb-delivery-grid">{% for i in delivery %}{{ fb_card(i) }}{% endfor %}</div>
+    {% endif %}
+    {% for i in items | selectattr("kind", "equalto", "next") %}
+      <p class="fb-banner fb-next"><b>Before your next interview:</b> {{ i.point }}</p>
+    {% endfor %}
+  {% else %}
+    <div class="grid-2" style="margin-top:0">
+      <div class="fb-box fb-good"><h3>Strengths</h3><p>{{ fb.strengths }}</p></div>
+      <div class="fb-box fb-improve"><h3>Areas to Improve</h3><p>{{ fb.areas_to_improve }}</p></div>
+    </div>
+    <div class="fb-box fb-tips"><h3>Recommendations</h3><p>{{ fb.recommendations }}</p></div>
+    {% if not admin_view and iv.status == 'completed' %}
+      <form method="POST" action="{{ url_for('retry_evaluation', interview_id=iv.interview_id) }}" class="fb-upgrade">
+        <span class="muted small">This interview was scored before detailed feedback existed.</span>
+        <button type="submit" class="btn btn-outline">Get detailed feedback</button>
+      </form>
+    {% endif %}
+  {% endif %}
+</section>
 {% endif %}
 
 {# ---- Each question and answer ---- #}
-<div class="card" style="margin-top:14px">
-  <h2>Your Answers</h2>
+<section class="tile tile-full">
+  <h2>{{ 'Answers' if admin_view else 'Your Answers' }}</h2>
+  <p class="muted small">{% if admin_view %}Transcripts and recordings are private to the student. Only scores are shown.{% else %}Click a question to open or close it. The percentage is the answer's average AI rating.{% endif %}</p>
   {% for a in answers %}
-    <div class="answer">
-      <h3>Q{{ a.question_order }}. {{ a.question_text }}</h3>
-      <p class="transcript">{{ a.transcript or "(no answer)" }}</p>
+    {% set parts = [a.relevance_score, a.clarity_score, a.completeness_score, a.grammar_score] | select("number") | list %}
+    <details class="answer" id="q{{ a.question_order }}"{{ ' open' if loop.first }}>
+      <summary class="answer-head">
+        <h3>Q{{ a.question_order }}. {{ a.question_text }}</h3>
+        {% set weak = a.skills | selectattr("rating", "equalto", "weak") | list %}
+        {% if weak %}<span class="weak-count">{{ weak | length }} weak skill{{ 's' if weak | length > 1 }}</span>{% endif %}
+        {% if parts %}<span class="answer-score">{{ "%.0f" | format((parts | sum) / (parts | length)) }}%</span>{% endif %}
+      </summary>
+      {% if not admin_view %}<p class="transcript">{{ a.transcript or "(no answer)" }}</p>{% endif %}
 
+      {# ---- Personal feedback on this exact answer ---- #}
+      {% set mine = (fb.feedback_items if fb and fb.feedback_items else []) | selectattr("answer_no", "equalto", a.question_order) | list %}
+      {% set good = mine | selectattr("kind", "equalto", "answer_good") | list %}
+      {% set fixes = mine | selectattr("kind", "equalto", "answer_fix") | list %}
+      {% set spoke = mine | selectattr("kind", "equalto", "delivery") | list %}
+      {% if a.skills or good or fixes or a.answer_feedback %}
+        <div class="answer-coach">
+          {% if a.skills %}
+            <div class="skill-list">
+              {% for sk in a.skills %}
+                <div class="skill-row">
+                  <span class="skill-tag {{ sk.rating }}">{{ sk.skill }} · {{ sk.rating | capitalize }}</span>
+                  {% if sk.reason %}<span class="skill-reason">{{ sk.reason }}</span>{% endif %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+          {% if good or fixes %}
+            <div class="fb-cols answer-cards">
+              <div>{% for i in good %}{{ fb_card(i, "What worked") }}{% else %}<p class="muted small">Nothing in this answer stood out as a strength yet.</p>{% endfor %}</div>
+              <div>{% for i in fixes %}{{ fb_card(i, "What to fix") }}{% endfor %}</div>
+            </div>
+            {% for i in spoke %}{{ fb_card(i, "How you spoke and looked") }}{% endfor %}
+          {% else %}
+            {# Interviews scored before the card format #}
+            {% if a.answer_feedback %}<p><b>Feedback:</b> {{ a.answer_feedback }}</p>{% endif %}
+            {% if a.weak_quote and not admin_view %}<p class="weak-quote"><b>Weakest part:</b> “{{ a.weak_quote }}”</p>{% endif %}
+            {% if a.better_answer %}<p><b>A stronger answer would:</b> {{ a.better_answer }}</p>{% endif %}
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {% if not a.audio_path and a.transcript and not admin_view %}
+        <p class="muted small">The voice recording was deleted automatically after {{ recording_days }} days. The transcript and scores are kept.</p>
+      {% endif %}
       {% if a.audio_path %}
         <audio controls preload="none" src="{{ url_for('audio_file', filename=a.audio_path.split('/')[-1]) }}"></audio>
       {% endif %}
@@ -213,12 +330,33 @@
           <span>Keywords <b>{{ a.keywords_found or "none" }}</b></span>
         {% endif %}
       </div>
-    </div>
+    </details>
   {% endfor %}
+</section>
 </div>
 
 <div class="btn-row" style="margin-top:18px">
-  <a href="{{ url_for('dashboard') }}" class="btn btn-outline">Back to dashboard</a>
-  <a href="{{ url_for('start_interview') }}" class="btn">Start another interview</a>
+  {% if admin_view %}
+    <a href="{{ url_for('admin_interviews') }}" class="btn btn-outline">Back to interview records</a>
+    <a href="{{ url_for('admin_user', user_id=iv.user_id) }}" class="btn">See {{ iv.full_name.split(' ')[0] }}'s progress</a>
+  {% else %}
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline">Back to dashboard</a>
+    <a href="{{ url_for('start_interview') }}" class="btn">Start another interview</a>
+  {% endif %}
 </div>
+
+{% if not admin_view %}{{ chat_widget(iv.interview_id) }}{% endif %}
+
+<script>
+  // Open the answer named in the link (e.g. #q2 from the chatbot) and scroll to it
+  function openAnswerFromHash() {
+    const el = location.hash && document.getElementById(location.hash.slice(1));
+    if (!el || el.tagName !== "DETAILS") return;
+    el.open = true;
+    el.classList.remove("answer-flash"); void el.offsetWidth; el.classList.add("answer-flash");
+    el.scrollIntoView({behavior: "smooth", block: "start"});
+  }
+  window.addEventListener("hashchange", openAnswerFromHash);
+  openAnswerFromHash();
+</script>
 {% endblock %}

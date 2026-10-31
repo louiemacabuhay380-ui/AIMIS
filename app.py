@@ -20,6 +20,8 @@ from ai_service import analyze_interview, transcribe_answer
 from nlp_service import analyze_text
 from speech_service import analyze_audio
 import password_reset
+import personal_feedback
+import rag
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
@@ -28,7 +30,7 @@ app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024   # max 25 MB upload
 AUDIO_DIR = os.path.join(app.root_path, "uploads", "audio")
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
-CONSENT_VERSION = "v1.1"
+CONSENT_VERSION = "v1.2"   # v1.2 = names Google Gemini, automatic deletion of recordings, My data page
 FILLER_FEEDBACK_MIN = 3   # this many filler words or more always gets a comment in the feedback   # v1.1 = voice recording + on-device camera analysis
 
 # Overall score weights (answer content, speech delivery, behavior)
@@ -53,6 +55,14 @@ def get_db():
 
 password_reset.register(app, get_db)   # adds the Forgot password pages
 
+import my_data
+my_data.register(app, get_db)          # My data page, Delete my data, automatic deletion of old recordings
+
+
+@app.context_processor
+def privacy_settings():
+    return {"recording_days": my_data.retention_days()}
+
 
 def login_required(f):
     @wraps(f)
@@ -62,6 +72,13 @@ def login_required(f):
             return redirect(url_for("login"))
         return f(*args, **kwargs)
     return wrapper
+
+
+@app.template_filter("fill_in")
+def fill_in(text):
+    """Show [details the student must fill in] as highlighted blanks in example answers."""
+    from markupsafe import escape, Markup
+    return Markup(re.sub(r"\[([^\]]{1,80})\]", r'<span class="fill-in">\1</span>', str(escape(text or ""))))
 
 
 def num(value):
@@ -75,7 +92,7 @@ def evaluate_interview(interview_id):
     """Score the transcribed answers, combine all scores, and save feedback."""
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT category, difficulty FROM interviews WHERE interview_id = %s", (interview_id,))
+    cursor.execute("SELECT user_id, category, difficulty FROM interviews WHERE interview_id = %s", (interview_id,))
     iv = cursor.fetchone()
     cursor.execute("""SELECT r.response_id, qb.question_text, qb.category, r.transcript,
                              COALESCE(sa.filler_word_count, 0) AS filler_word_count,
@@ -96,7 +113,9 @@ def evaluate_interview(interview_id):
         conn.close()
         raise RuntimeError("Some answers haven't been transcribed yet. Run process_interview instead.")
 
-    result = analyze_interview(iv["category"], iv["difficulty"], qa_list)
+    # Earlier interviews of this student, so the feedback can mention their progress
+    history_text = personal_feedback.history_summary(cursor, iv["user_id"], interview_id)
+    result = analyze_interview(iv["category"], iv["difficulty"], qa_list, history_text)
 
     # Clear old results so re-evaluating doesn't create duplicates
     response_ids = [qa["response_id"] for qa in qa_list]
@@ -151,13 +170,23 @@ def evaluate_interview(interview_id):
                        behavioral_score, overall_score)
                       VALUES (%s, %s, %s, %s, %s)""",
                    (interview_id, quality, speech, behavior, overall))
-    areas, tips = add_filler_feedback(result.get("areas_to_improve", ""), result.get("recommendations", ""), qa_list)
-    areas, tips = add_behavior_feedback(areas, tips, qa_list)
+    # Feedback item by item: each one points to an exact answer, with the student's words and a fix
+    items = personal_feedback.build_feedback_items(result, qa_list)
+    strengths, areas, tips = personal_feedback.feedback_text(items)
     cursor.execute("""INSERT INTO feedback (interview_id, strengths, areas_to_improve, recommendations)
                       VALUES (%s, %s, %s, %s)""",
-                   (interview_id, result.get("strengths", ""), areas, tips))
+                   (interview_id, strengths, areas, tips))
+    personal_feedback.save_feedback_items(cursor, interview_id, items)
     cursor.execute("UPDATE interviews SET overall_score = %s WHERE interview_id = %s", (overall, interview_id))
+    # Feedback and sub-skill labels for each answer (needs block 7 of schema_updates.sql)
+    personal_feedback.save_answer_feedback(cursor, qa_list, result.get("answers", []))
     conn.commit()
+
+    # Add this interview to the chatbot's knowledge base (RAG). Never let this break the scoring.
+    try:
+        rag.index_interview(conn, interview_id, load_report)
+    except Exception as e:
+        print("Could not add the interview to the chatbot knowledge base:", e)
     conn.close()
 
 
@@ -380,10 +409,15 @@ def login():
         conn.close()
 
         if user and check_password_hash(user["password"], password):
+            if not user.get("is_active", 1):
+                flash("This account has been deactivated. Please contact the AIMIS administrator.")
+                return redirect(url_for("login"))
             session.clear()
             session["user_id"] = user["user_id"]
             session["full_name"] = user["full_name"]
             session["role"] = user["role"]
+            if user["role"] == "admin":
+                return redirect(url_for("admin_overview"))
             return redirect(url_for("dashboard"))
 
         flash("Incorrect email or password.")
@@ -421,6 +455,7 @@ def dashboard():
                       ORDER BY i.completed_at""", (session["user_id"],))
     history = cursor.fetchall()
     skills = skill_breakdown(cursor, session["user_id"])
+    weak_skill = personal_feedback.weakest_skill(cursor, session["user_id"])
     conn.close()
 
     chart = {
@@ -453,7 +488,7 @@ def dashboard():
 
     focus = min(skills, key=lambda s: s["value"]) if skills else None
     return render_template("dashboard.html", interviews=interviews, chart=chart, stats=stats,
-                           skills=skills, focus=focus)
+                           skills=skills, focus=focus, weak_skill=weak_skill)
 
 
 # Skill rings on the dashboard: name, how it's computed, and a tip for improving it
@@ -788,8 +823,26 @@ def run_processing(interview_id):
         return jsonify(ok=True)
     except Exception as e:
         print("Processing failed:", e)
-        return jsonify(ok=False, error="We couldn't finish analyzing your interview. "
-                                       "Your answers are saved. Please try again."), 503
+        return jsonify(ok=False, error=explain_failure(e)), 503
+
+
+def explain_failure(e):
+    """A clear reason for the student when the AI evaluation fails (the full error goes to the terminal)."""
+    import traceback
+    traceback.print_exc()
+    text = str(e)
+    if getattr(e, "code", None) == 429 or "429" in text or "RESOURCE_EXHAUSTED" in text:
+        return ("Gemini's free limit has been reached for now, so the AI couldn't score this interview. "
+                "Your answers are saved. Try again later (the limit resets daily), or set EVAL_PROVIDER=ollama in .env.")
+    if getattr(e, "code", None) in (500, 503) or "UNAVAILABLE" in text:
+        return "Gemini is busy right now. Your answers are saved. Please try again in a few minutes."
+    if "Ollama" in text or "ollama" in text:
+        return "The local AI (Ollama) isn't running or the model is missing. Open Ollama and try again."
+    if getattr(e, "errno", None) in (1054, 1146):
+        return "The database is missing a new table or column. Run the latest blocks of database/schema_updates.sql."
+    if "API key" in text or getattr(e, "code", None) in (400, 401, 403):
+        return "The Gemini API key in .env was rejected. Check GEMINI_API_KEY."
+    return "The AI evaluation failed: " + text[:180]
 
 
 @app.route("/interview/<int:interview_id>/evaluate", methods=["POST"])
@@ -810,23 +863,12 @@ def retry_evaluation(interview_id):
         flash("Evaluation complete!")
     except Exception as e:
         print("Evaluation failed:", e)
-        flash("The AI evaluation failed. Check the terminal for the error.")
+        flash(explain_failure(e))
     return redirect(url_for("interview_summary", interview_id=interview_id))
 
 
-@app.route("/interview/<int:interview_id>/summary")
-@login_required
-def interview_summary(interview_id):
-    conn = get_db()
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute("SELECT * FROM interviews WHERE interview_id = %s AND user_id = %s",
-                   (interview_id, session["user_id"]))
-    iv = cursor.fetchone()
-    if not iv:
-        conn.close()
-        flash("Interview not found.")
-        return redirect(url_for("dashboard"))
-
+def load_report(cursor, interview_id):
+    """Answers, scores and feedback for one interview (used by the student report and the admin view)."""
     cursor.execute("""SELECT iq.question_order, qb.question_text, r.response_id, r.transcript, r.audio_path,
                              n.relevance_score, n.clarity_score, n.completeness_score, n.grammar_score,
                              n.word_count, n.vocabulary_diversity, n.keyword_count, n.keywords_found,
@@ -845,14 +887,35 @@ def interview_summary(interview_id):
                       WHERE iq.interview_id = %s
                       ORDER BY iq.question_order""", (interview_id,))
     answers = attach_gesture_extras(cursor, cursor.fetchall())
+    answers = personal_feedback.attach_answer_feedback(cursor, answers)
     cursor.execute("SELECT * FROM evaluations WHERE interview_id = %s", (interview_id,))
     evaluation = cursor.fetchone()
     cursor.execute("SELECT * FROM feedback WHERE interview_id = %s ORDER BY created_at DESC LIMIT 1",
                    (interview_id,))
     fb = cursor.fetchone()
+    if fb:
+        fb["feedback_items"] = personal_feedback.load_feedback_items(cursor, interview_id)
+    return answers, evaluation, fb
+
+
+@app.route("/interview/<int:interview_id>/summary")
+@login_required
+def interview_summary(interview_id):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    cursor.execute("SELECT * FROM interviews WHERE interview_id = %s AND user_id = %s",
+                   (interview_id, session["user_id"]))
+    iv = cursor.fetchone()
+    if not iv:
+        conn.close()
+        flash("Interview not found.")
+        return redirect(url_for("dashboard"))
+
+    answers, evaluation, fb = load_report(cursor, interview_id)
+    progress = personal_feedback.progress_compare(cursor, session["user_id"], interview_id, evaluation)
     conn.close()
     return render_template("interview_summary.html", iv=iv, answers=answers,
-                           evaluation=evaluation, fb=fb)
+                           evaluation=evaluation, fb=fb, progress=progress)
 
 
 @app.route("/audio/<path:filename>")
@@ -879,6 +942,16 @@ def audio_file(filename):
     except InvalidToken:
         abort(500)   # wrong key or damaged file
     return Response(audio_bytes, mimetype="audio/wav")
+
+
+# Admin panel pages (placed here so every function above already exists)
+import admin
+from ai_service import generate_questions
+admin.register(app, get_db, load_report, generate_questions)
+
+# AIMIS Coach chatbot (RAG over the student's own interviews)
+import chatbot
+chatbot.register(app, get_db, load_report)
 
 
 if __name__ == "__main__":

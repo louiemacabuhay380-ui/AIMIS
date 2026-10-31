@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% from "admin/_macros.html" import score %}
+{% block title %}Admin · AIMIS{% endblock %}
+{% block content %}
+<div class="page-head admin-head">
+  <div><p class="room-kicker admin-kicker">Admin panel</p><h1>Overview</h1></div>
+</div>
+{% include "admin/_tabs.html" %}
+
+<div class="grid-4 admin-kpis">
+  <div class="card stat"><span class="stat-label">Students</span><span class="stat-value">{{ stats.students }}</span>
+    <span class="stat-note">{{ stats.active_week }} practiced this week</span></div>
+  <div class="card stat"><span class="stat-label">Interviews completed</span><span class="stat-value">{{ stats.done }}</span>
+    <span class="stat-note">{{ stats.done_week }} in the last 7 days</span></div>
+  <div class="card stat"><span class="stat-label">Average overall score</span>
+    <span class="stat-value">{{ "%.0f%%" | format(stats.overall) if stats.overall is number else "–" }}</span>
+    <span class="stat-note">From {{ stats.scored }} scored interview{{ 's' if stats.scored != 1 }}</span></div>
+  <div class="card stat"><span class="stat-label">Questions to review</span><span class="stat-value">{{ pending }}</span>
+    <span class="stat-note"><a href="{{ url_for('admin_questions', view='pending') }}">Open the review list</a></span></div>
+</div>
+
+<div class="grid-2 admin-row">
+  <div class="card">
+    <h2>Interviews completed, last 14 days</h2>
+    <div class="col-chart" role="img" aria-label="Interviews completed per day: {% for d in daily %}{{ d.label }} {{ d.n }}{{ ', ' if not loop.last }}{% endfor %}">
+      {% for d in daily %}
+        <div class="col" title="{{ d.label }}: {{ d.n }} interview{{ 's' if d.n != 1 }}">
+          <span class="col-val">{{ d.n if d.n else '' }}</span>
+          <span class="col-bar" style="height: {{ (d.n / daily_max * 100) | round(1) }}%"></span>
+          <span class="col-label">{{ d.label.split(' ')[1] }}</span>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Average scores</h2>
+    {% for label, v in [("Response quality", stats.quality), ("Speech performance", stats.speech), ("Body language", stats.behavior)] %}
+      <div class="score-row">
+        <div class="label-line"><span>{{ label }}</span><span>{{ "%.0f%%" | format(v) if v is number else "–" }}</span></div>
+        <div class="bar"><span style="width: {{ v if v is number else 0 }}%"></span></div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="grid-2 admin-row">
+  <div class="card">
+    <h2>Most practiced skills</h2>
+    {% if cats %}
+      <table class="data-table compact">
+        <thead><tr><th>Skill</th><th>Interviews</th><th class="num">Avg score</th></tr></thead>
+        <tbody>
+        {% for c in cats %}
+          <tr title="{{ c.category }}: {{ c.n }} interviews">
+            <td>{{ c.category }}</td>
+            <td><span class="hbar"><span style="width: {{ (c.n / cat_max * 100) | round(1) }}%"></span></span> {{ c.n }}</td>
+            <td class="num">{{ score(c.avg_score | float if c.avg_score is not none else none) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}<p class="muted">No completed interviews yet.</p>{% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Common weak areas</h2>
+    <p class="muted small">Share of scored interviews where students struggled. Use this to plan what to teach next.</p>
+    {% if weak %}
+      {% for w in weak %}
+        <div class="score-row" title="{{ w.n }} of {{ w.of }} interviews">
+          <div class="label-line"><span>{{ w.label }}</span><span>{{ w.pct }}%</span></div>
+          <div class="bar bar-warn"><span style="width: {{ w.pct }}%"></span></div>
+          <p class="score-desc">{{ w.n }} of {{ w.of }} interviews</p>
+        </div>
+      {% endfor %}
+    {% else %}<p class="muted">Not enough scored interviews yet.</p>{% endif %}
+  </div>
+</div>
+
+<div class="card admin-row">
+  <div class="card-head"><h2>Recently completed</h2><a href="{{ url_for('admin_interviews') }}" class="btn btn-sm btn-outline">All interview records</a></div>
+  {% if recent %}
+    <table class="data-table">
+      <thead><tr><th>Student</th><th>Skill</th><th>Difficulty</th><th>Completed</th><th class="num">Overall</th><th></th></tr></thead>
+      <tbody>
+      {% for r in recent %}
+        <tr>
+          <td>{{ r.full_name }}</td><td>{{ r.category }}</td><td>{{ r.difficulty }}</td>
+          <td>{{ r.completed_at.strftime('%b %d, %I:%M %p') if r.completed_at else '–' }}</td>
+          <td class="num">{{ score(r.overall_score | float if r.overall_score is not none else none) }}</td>
+          <td class="num"><a href="{{ url_for('admin_report', interview_id=r.interview_id) }}">View</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}<p class="muted">No completed interviews yet.</p>{% endif %}
+</div>
+{% endblock %}

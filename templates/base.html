@@ -68,6 +68,10 @@
         {% if session.get('user_id') %}
           <a href="{{ url_for('dashboard') }}"
              class="nav-link {{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a>
+          {% if session.get('role') == 'admin' %}
+            <a href="{{ url_for('admin_overview') }}"
+               class="nav-link {{ 'active' if request.endpoint and request.endpoint.startswith('admin') }}">Admin</a>
+          {% endif %}
         {% endif %}
 
         <!-- Theme switch: left = light, right = dark -->
@@ -86,7 +90,8 @@
         </button>
 
         {% if session.get('user_id') %}
-          <span class="user-avatar" title="{{ session.full_name }}">{{ (session.full_name or 'U')[0] | upper }}</span>
+          <a href="{{ url_for('my_data') }}" class="nav-link{{ ' active' if request.endpoint == 'my_data' }}">My data</a>
+          <a href="{{ url_for('my_data') }}" class="user-avatar" title="{{ session.full_name }} · My data">{{ (session.full_name or 'U')[0] | upper }}</a>
           <a href="{{ url_for('logout') }}" class="nav-link">Log out</a>
         {% endif %}
       </nav>

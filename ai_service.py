@@ -16,32 +16,72 @@ Score each answer from 0 to 100 on:
 - completeness: does it fully answer it (for experience questions: situation, action, and result)?
 - grammar: spoken grammar and sentence structure
 
-Each answer shows how many filler words were detected in the speech. Do not lower the scores
-for fillers, but if the candidate used them often (about 3 or more in total), you MUST point it out
-in areas_to_improve: say roughly how many, quote examples such as "um", "uh" or "ano", and explain
-that fillers can make them sound unsure. Then give a practical tip for it in recommendations.
+Some answers show filler-word counts and camera scores (eye contact, facial expression, gestures).
+Do not let them change the four answer scores, and do not write about fillers or body language in the
+whole-interview feedback: AIMIS adds that part itself using the exact numbers. Focus on WHAT was said.
 
-Some answers also show camera scores measured while the candidate spoke (eye contact, facial
-expression, gestures, from 0 to 100). Do not let them change the four answer scores. Use them only in
-the feedback: if eye contact or facial expression is below about 60, mention it in areas_to_improve
-with a practical tip in recommendations; if they are 80 or higher, you may praise it in strengths.
-Hand gestures that help explain a point are good: if the candidate used expressive gestures and rarely
-touched their face, you may praise it in strengths. Frequent face touching (about 15% or more) looks
-nervous and belongs in areas_to_improve. Never require gestures; some people speak well without them.
+For EACH answer also write personal feedback about that exact answer, using what the candidate said:
+- good: one sentence on what worked in THIS answer and why ("" if nothing did).
+- good_quote: their exact words that show it (up to about 20 words, copied exactly from the answer, or "").
+- feedback: one sentence on what was weak or missing in THIS answer. Never write advice that could fit any answer.
+- weak_quote: their exact words from the weakest part (up to about 20 words, copied exactly), or "" if
+  the problem is something missing.
+- better_answer: what to do differently in THIS answer, using their own situation
+  (e.g. "Say what you did when your groupmate missed the deadline and how it ended").
+- example: 1-2 sentences showing how they could say this answer better, in first person, based on their own
+  story. Do not invent facts: put details they must fill in inside [square brackets].
+- skills: rate 2 to 4 of these sub-skills that this answer shows (use these exact names):
+  {skill_names}
+  Each one gets a rating "strong", "okay" or "weak" and a short reason (under 20 words) that points to
+  what the candidate said or didn't say.
 
-Then give feedback on the whole interview, speaking directly to the candidate:
-- strengths: 2-3 sentences
-- areas_to_improve: 2-3 sentences
-- recommendations: 2-3 specific, practical tips
+Then give feedback on the whole interview. Every item MUST point to one answer by number and use what the
+candidate actually said in it. Speak directly to the candidate ("you").
+- strengths: 1 or 2 items. answer = the answer number, point = what was good and why it works,
+  quote = their exact words that show it (up to about 20 words, copied exactly from that answer).
+- improvements: 2 or 3 items, most important first. answer = the answer number, point = what was weak
+  or missing in that answer, quote = their exact words from that part (or "" if the problem is something
+  missing), fix = what to do differently in that answer, example = 1-2 sentences showing how they could
+  say it, in first person, based on their own story. Do not invent facts: put details they must fill in
+  inside [square brackets].
+- next_focus: one sentence: the single most important thing to practice before the next interview,
+  naming the sub-skill and the answer it came from.
+{history_rule}
+Never write general advice that could fit any candidate. For example:
+  TOO GENERAL (never write): "Give more specific examples and structure your answers better."
+  SPECIFIC (write like this): point "In answer 3 you said you 'just go with the flow' but never described a
+  real change of plans.", fix "Pick one real time your plans changed and say what you did and how it ended.",
+  example "When our thesis deadline was moved [one week earlier], I [split the remaining tasks with my
+  groupmates], and we [submitted on time]."
 
 Return only JSON in exactly this format:
-{{"answers": [{{"question_number": 1, "relevance": 0, "clarity": 0, "completeness": 0, "grammar": 0}}],
- "strengths": "", "areas_to_improve": "", "recommendations": ""}}
+{{"answers": [{{"question_number": 1, "relevance": 0, "clarity": 0, "completeness": 0, "grammar": 0,
+   "good": "", "good_quote": "", "feedback": "", "weak_quote": "", "better_answer": "", "example": "",
+   "skills": [{{"skill": "Critical thinking", "rating": "weak", "reason": ""}}]}}],
+ "strengths": [{{"answer": 1, "point": "", "quote": ""}}],
+ "improvements": [{{"answer": 1, "point": "", "quote": "", "fix": "", "example": ""}}],
+ "next_focus": ""{progress_field}}}
 
 Interview category: {category}
 Difficulty: {difficulty}
-
+{history_text}
 {qa_text}"""
+
+# Sub-skills the AI labels on every answer (the chatbot uses these to say exactly where you were weak)
+SKILL_LABELS = [
+    "Critical thinking",      # explains why, weighs options, reasons through the problem
+    "Problem solving",        # names the problem and the concrete steps taken
+    "Answer structure",       # situation, action and result in a clear order (STAR)
+    "Specific examples",      # a real, concrete example instead of a general statement
+    "Clarity",                # easy to follow, to the point
+    "Self-awareness",         # reflects on own role, lessons learned
+    "Teamwork and communication",
+    "Results and impact",     # says how it ended and what changed
+]
+
+HISTORY_RULE = ("- progress_note: the candidate's earlier interviews are summarized below. Write one sentence "
+                "comparing this interview with them (what improved and what is still weak), using only the "
+                "numbers given.")
 
 TRANSCRIBE_PROMPT = """You are analyzing a candidate's spoken answer in a mock job interview.
 The interview question was: "{question}"
@@ -139,7 +179,7 @@ def _generate_ollama(prompt, expected_answers):
             result = json.loads(response["message"]["content"])
 
             answers = result.get("answers", [])
-            keys_ok = all(k in result for k in ("strengths", "areas_to_improve", "recommendations"))
+            keys_ok = all(k in result for k in ("strengths", "improvements"))
             scores_ok = all(all(k in a for k in ("relevance", "clarity", "completeness", "grammar"))
                             for a in answers)
             if keys_ok and scores_ok and len(answers) == expected_answers:
@@ -166,14 +206,20 @@ def _camera_line(i, qa):
     return line + ")"
 
 
-def analyze_interview(category, difficulty, qa_list):
-    """Score all answers in an interview and write overall feedback."""
+def analyze_interview(category, difficulty, qa_list, history_text=""):
+    """Score all answers in an interview and write overall and per-answer feedback.
+    history_text: short summary of the candidate's earlier interviews ("" for the first one)."""
     qa_text = "\n\n".join(
         f"Question {i}: {qa['question_text']}\nAnswer {i}: {qa['transcript']}\n"
         f"(Filler words detected in answer {i}: {qa.get('filler_word_count', 0)})"
         + _camera_line(i, qa)
         for i, qa in enumerate(qa_list, start=1))
-    prompt = EVAL_PROMPT.format(category=category, difficulty=difficulty, qa_text=qa_text)
+    prompt = EVAL_PROMPT.format(
+        category=category, difficulty=difficulty, qa_text=qa_text,
+        skill_names=", ".join(SKILL_LABELS),
+        history_rule=HISTORY_RULE if history_text else "",
+        progress_field=', "progress_note": ""' if history_text else "",
+        history_text=("Earlier interviews of this candidate:\n" + history_text + "\n") if history_text else "")
     if os.getenv("EVAL_PROVIDER", "gemini") == "ollama":
         return _generate_ollama(prompt, expected_answers=len(qa_list))
     return _generate(prompt, thinking_level="low")
@@ -185,3 +231,39 @@ def transcribe_answer(question_text, audio_bytes):
         TRANSCRIBE_PROMPT.format(question=question_text),
         types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")],
         thinking_level="minimal")
+
+
+QUESTION_PROMPT = """You write questions for a mock job interview that practices SOFT SKILLS only.
+The candidates are college students and fresh graduates in the Philippines.
+
+Soft skill (category): {category}
+Difficulty: {difficulty}
+- Beginner: general, friendly questions about everyday school, group work, or personal habits.
+- Intermediate: questions about specific real situations ("Tell me about a time...").
+- Advanced: harder situations with pressure, conflict, failure, or difficult trade-offs.
+
+Rules:
+- Write exactly {count} NEW questions for this category and difficulty.
+- One sentence each, in clear simple English, answerable in 1 to 3 minutes by speaking.
+- No technical, job-specific, or personal/sensitive questions (no health, religion, family problems, money, politics).
+- Do not repeat or closely paraphrase any of these existing questions:
+{existing}
+
+Return only JSON in exactly this format:
+{{"questions": ["...", "..."]}}"""
+
+
+def generate_questions(category, difficulty, count, existing):
+    """Ask Gemini for new interview questions. Returns a list of question strings."""
+    sample = "\n".join(f"- {q}" for q in existing[:40]) or "- (none yet)"
+    result = _generate(QUESTION_PROMPT.format(category=category, difficulty=difficulty,
+                                              count=count, existing=sample), thinking_level="low")
+    questions = result.get("questions", []) if isinstance(result, dict) else []
+    seen = {q.strip().lower() for q in existing}
+    clean = []
+    for q in questions:
+        q = " ".join(str(q).split())
+        if 15 <= len(q) <= 300 and q.lower() not in seen:
+            seen.add(q.lower())
+            clean.append(q)
+    return clean[:count]

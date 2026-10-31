@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "admin/_macros.html" import score, status %}
+{% block title %}{{ user.full_name }} · Admin · AIMIS{% endblock %}
+{% block content %}
+{% set active_acct = user.is_active if user.is_active is defined and user.is_active is not none else 1 %}
+<div class="page-head admin-head">
+  <div>
+    <p class="room-kicker admin-kicker"><a href="{{ url_for('admin_users') }}">Users</a> / Student</p>
+    <h1>{{ user.full_name }}</h1>
+    <p>{{ user.email }} ·
+      {% if user.role == 'admin' %}<span class="badge badge-admin">Admin</span>{% else %}Student{% endif %} ·
+      {% if active_acct %}<span class="badge badge-good">Active</span>{% else %}<span class="badge">Deactivated</span>{% endif %}</p>
+  </div>
+</div>
+{% include "admin/_tabs.html" %}
+
+<div class="grid-2 admin-row">
+  <div class="card">
+    <h2>Progress</h2>
+    <div class="kv"><span>Interviews completed</span><span>{{ summary.done }} of {{ summary.total }} started</span></div>
+    <div class="kv"><span>Average overall</span><span>{{ score(summary.overall) }}</span></div>
+    <div class="kv"><span>Response quality</span><span>{{ score(summary.quality) }}</span></div>
+    <div class="kv"><span>Speech performance</span><span>{{ score(summary.speech) }}</span></div>
+    <div class="kv"><span>Body language</span><span>{{ score(summary.behavior) }}</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Account actions</h2>
+    <div class="action-list">
+      {% set is_me = user.user_id == session.user_id %}
+      <form method="POST" action="{{ url_for('admin_user_action', user_id=user.user_id, action='reset_password') }}"
+            onsubmit="return confirm('Give {{ user.full_name }} a new temporary password? Their old password will stop working.');">
+        <button class="btn btn-outline" type="submit">Reset password</button>
+        <span class="muted small">Creates a temporary password to give them.</span>
+      </form>
+      {% if not is_me %}
+        {% if active_acct %}
+          <form method="POST" action="{{ url_for('admin_user_action', user_id=user.user_id, action='deactivate') }}"
+                onsubmit="return confirm('Deactivate {{ user.full_name }}? They won\'t be able to log in. Their data is kept.');">
+            <button class="btn btn-danger" type="submit">Deactivate account</button>
+            <span class="muted small">Blocks login; keeps their interviews.</span>
+          </form>
+        {% else %}
+          <form method="POST" action="{{ url_for('admin_user_action', user_id=user.user_id, action='activate') }}">
+            <button class="btn" type="submit">Reactivate account</button>
+          </form>
+        {% endif %}
+        {% if user.role == 'admin' %}
+          <form method="POST" action="{{ url_for('admin_user_action', user_id=user.user_id, action='remove_admin') }}"
+                onsubmit="return confirm('Remove admin access from {{ user.full_name }}?');">
+            <button class="btn btn-outline" type="submit">Remove admin access</button>
+          </form>
+        {% else %}
+          <form method="POST" action="{{ url_for('admin_user_action', user_id=user.user_id, action='make_admin') }}"
+                onsubmit="return confirm('Make {{ user.full_name }} an admin? They will see all students\' scores.');">
+            <button class="btn btn-outline" type="submit">Make admin</button>
+          </form>
+        {% endif %}
+      {% else %}
+        <p class="muted small">This is your own account, so you can't deactivate it or remove your admin access here.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="card table-card admin-row">
+  <div class="card-head"><h2>Interviews</h2>
+    <a class="btn btn-sm btn-outline" href="{{ url_for('admin_interviews_csv', user_id=user.user_id, names=1) }}">Download CSV</a></div>
+  <div class="table-scroll">
+  <table class="data-table">
+    <thead><tr><th>Started</th><th>Skill</th><th>Difficulty</th><th>Status</th><th class="num">Overall</th><th class="num">Answers</th><th class="num">Speech</th><th class="num">Body</th><th></th></tr></thead>
+    <tbody>
+    {% for i in interviews %}
+      <tr>
+        <td>{{ i.started_at.strftime('%b %d, %Y') if i.started_at else '–' }}</td>
+        <td>{{ i.category }}</td><td>{{ i.difficulty }}</td><td>{{ status(i.status) }}</td>
+        <td class="num">{{ score(i.overall_score) }}</td><td class="num">{{ score(i.response_quality_score) }}</td>
+        <td class="num">{{ score(i.speech_performance_score) }}</td><td class="num">{{ score(i.behavioral_score) }}</td>
+        <td class="num">{% if i.status == 'completed' %}<a href="{{ url_for('admin_report', interview_id=i.interview_id) }}">View</a>{% endif %}</td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="muted">No interviews yet.</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{% endblock %}

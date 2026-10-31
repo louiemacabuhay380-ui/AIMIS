@@ -1,0 +1,27 @@
+{% macro score(v) -%}
+  {%- if v is number -%}
+    <span class="score-chip {{ 'good' if v >= 75 else 'ok' if v >= 60 else 'low' }}">{{ "%.0f" | format(v) }}%</span>
+  {%- else -%}<span class="muted">–</span>{%- endif -%}
+{%- endmacro %}
+
+{% macro status(s) -%}
+  <span class="badge {{ 'badge-good' if s == 'completed' else 'badge-warn' if s == 'in_progress' else '' }}">
+    {{ {'completed': 'Completed', 'in_progress': 'Unfinished', 'cancelled': 'Cancelled'}.get(s, s) }}</span>
+{%- endmacro %}
+
+{# Page buttons: Prev 1 2 3 … 10 Next (links keep the current filters) #}
+{% macro pager(endpoint, page, pages, args) -%}
+  {% if pages > 1 %}
+  <nav class="pager page-links" aria-label="Pages">
+    {% if page > 1 %}<a class="page-btn page-nav" href="{{ url_for(endpoint, page=page-1, **args) }}">Prev</a>
+    {% else %}<span class="page-btn page-nav is-off">Prev</span>{% endif %}
+    {% for n in page_list(page, pages) %}
+      {% if n == "…" %}<span class="page-gap">…</span>
+      {% elif n == page %}<span class="page-btn active" aria-current="page">{{ n }}</span>
+      {% else %}<a class="page-btn" href="{{ url_for(endpoint, page=n, **args) }}">{{ n }}</a>{% endif %}
+    {% endfor %}
+    {% if page < pages %}<a class="page-btn page-nav page-next" href="{{ url_for(endpoint, page=page+1, **args) }}">Next</a>
+    {% else %}<span class="page-btn page-nav is-off">Next</span>{% endif %}
+  </nav>
+  {% endif %}
+{%- endmacro %}
