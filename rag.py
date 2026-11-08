@@ -505,6 +505,46 @@ LANGUAGE_RULE = {
 }
 
 
+# ---------------------------------------------------------------- off-topic questions
+# Words that show a question is about interviews, the student's results, or soft skills.
+TOPIC_WORDS = set("""interview interviews interviewer answer answers answered answering question questions score scores
+scored scoring result results report feedback skill skills weak weakest weakness weaknesses strong strongest strength
+strengths improve improved improvement improving better best worst lowest highest low high progress practice practicing
+tip tips advice focus mistake mistakes wrong good bad critical thinking problem solving structure star example examples
+specific clarity clear self-awareness teamwork communication communicate leadership adaptability adapt confident
+confidence nervous anxious anxiety calm speech speaking speak spoke voice tone pace pause pauses filler fillers um
+fluency grammar vocabulary eye contact camera look looking smile facial expression face gesture gestures hands body
+language posture behavior behaviour overall average percent session sessions attempt attempts first last latest recent
+previous compare compared job work career hire hired hiring employer applicant apply application resume cv
+introduce introduction yourself salary company manager team group thesis ojt internship graduate fresh
+mahina mahinang pinakamahina malakas magaling tanong sagot sumagot iskor marka puntos kulang mali tama ayusin
+pagbutihin gumaling galingan kabado kinakabahan kumpiyansa boses pagsasalita tingin mata ngiti kamay trabaho
+aplay kaba kabahan kinabahan nerbyos mababa mataas galing husay magaling ensayo magsanay sanay
+tiwala sarili ipakilala pagpapakilala ugali""".split())
+
+OFF_TOPIC_REPLY = {
+    "English": ("I can only help with your AIMIS mock interviews and interview skills. "
+                "Try asking: \"Which answer was my weakest, and why?\""),
+    "Taglish": ("Pasensya na, interview practice mo lang sa AIMIS ang kaya kong sagutin. "
+                "Try mo itanong: \"Saang part ako mahina sa critical thinking?\""),
+    "Filipino": ("Paumanhin, ang kaya ko lang sagutin ay tungkol sa iyong mga mock interview sa AIMIS. "
+                 "Subukan mong itanong: \"Saang bahagi ako mahina sa critical thinking?\""),
+}
+
+
+def off_topic_reply(question):
+    """A fixed, polite reply if the question clearly has nothing to do with interviews; otherwise None.
+    Off-topic questions never reach the AI with the student's data, so it can't bring that data up."""
+    words = re.findall(r"[a-zA-Z'-]+", (question or "").lower())
+    if len(words) < 3:            # "hi", "thanks", "why?" — short follow-ups go to the AI as usual
+        return None
+    if any(w in TOPIC_WORDS or w.rstrip("s") in TOPIC_WORDS for w in words):
+        return None
+    if question_number(question) or mentioned_skills(question):
+        return None
+    return OFF_TOPIC_REPLY[reply_language(question)]
+
+
 def _messages(context, history, question):
     msgs = [{"role": "system", "content": SYSTEM_PROMPT}]
     for h in history[-4:]:
@@ -513,7 +553,11 @@ def _messages(context, history, question):
     # The language rule goes LAST, right after the question: small models follow the end of the prompt best
     msgs.append({"role": "user", "content": f"DATA:\n{context or '(No scored interviews yet.)'}\n\n"
                                             f"STUDENT'S QUESTION: {question}\n\n"
-                                            f"LANGUAGE: {LANGUAGE_RULE[language]}"})
+                                            f"LANGUAGE: {LANGUAGE_RULE[language]}\n\n"
+                                            "TOPIC: If this question is not about the student's mock interviews, "
+                                            "their interview skills or getting a job, do NOT use or mention the DATA. "
+                                            "Reply in one or two sentences that you can only help with their AIMIS "
+                                            "mock interviews, and suggest one question they could ask instead."})
     return msgs
 
 

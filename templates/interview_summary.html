@@ -12,6 +12,16 @@
   {{- items | map(attribute=key) | select("number") | sum -}}
 {%- endmacro %}
 
+{# One 0-100 score, colored by level and labeled with a word so it doesn't rely on color alone #}
+{% macro score(items, key) -%}
+  {%- set vals = items | map(attribute=key) | select("number") | list -%}
+  {%- if vals -%}
+    {%- set v = (vals | sum) / (vals | length) -%}
+    {%- set lvl = 'good' if v >= 75 else 'ok' if v >= 50 else 'low' -%}
+    <span class="score-val lvl-{{ lvl }}">{{ "%.0f" | format(v) }}% <small>{{ 'Strong' if lvl == 'good' else 'Okay' if lvl == 'ok' else 'Needs work' }}</small></span>
+  {%- else -%}<span>–</span>{%- endif -%}
+{%- endmacro %}
+
 {# Format one number, or show a dash if it's empty #}
 {% macro num(value, fmt="%.0f") -%}
   {%- if value is number -%}{{ fmt | format(value) }}{%- else -%}–{%- endif -%}
@@ -32,7 +42,14 @@
   </div>
 </div>
 
-<div class="bento bento-report">
+{# ---- Jump bar: go straight to a part of this long report ---- #}
+<nav class="report-jump" aria-label="Report sections">
+  {% if evaluation %}<a href="#sec-scores">Scores</a>{% endif %}
+  {% if fb %}<a href="#sec-feedback">Feedback</a>{% endif %}
+  <a href="#sec-answers">{{ 'Answers' if admin_view else 'Your answers' }} <span class="jump-count">{{ answers | length }}</span></a>
+</nav>
+
+<div class="bento bento-report" id="sec-scores">
 {% if evaluation %}
   {# Each part: its score, and how much it counts toward the Overall score #}
   {% set bars = [("Response Quality", evaluation.response_quality_score, 60, "How good your answers were"),
@@ -87,6 +104,14 @@
       </div>
     {% endif %}
 
+    {% set stt = answers | map(attribute="transcribed_by") | select | unique | list %}
+    {% if evaluation.scored_by or stt %}
+      <p class="ai-used small muted">
+        {% if evaluation.scored_by %}Scored by: <b>{{ AI_NAMES.get(evaluation.scored_by, evaluation.scored_by) }}</b>{% endif %}
+        {% if stt %}{{ ' · ' if evaluation.scored_by }}Speech-to-text: <b>{% for t in stt %}{{ AI_NAMES.get(t, t) }}{{ ', ' if not loop.last }}{% endfor %}</b>{% endif %}
+      </p>
+    {% endif %}
+
     <details class="help">
       <summary>What does each score measure?</summary>
       <ul>
@@ -119,17 +144,17 @@
     <h2>Speech Analysis</h2>
     {% if spoken %}
       <div class="kv"><span>Speaking pace</span><span>{{ avg(spoken, "speaking_rate") }} WPM</span></div>
-      <div class="kv"><span>Filler words</span><span class="warn">{{ total(spoken, "filler_word_count") }}</span></div>
-      <div class="kv"><span>Long pauses</span><span class="warn">{{ total(spoken, "pause_count") }}</span></div>
-      <div class="kv"><span>Fluency</span><span class="good">{{ avg(spoken, "fluency_score") }}%</span></div>
+      <div class="kv"><span>Filler words</span><span>{{ total(spoken, "filler_word_count") }}</span></div>
+      <div class="kv"><span>Long pauses</span><span>{{ total(spoken, "pause_count") }}</span></div>
+      <div class="kv"><span>Fluency</span>{{ score(spoken, "fluency_score") }}</div>
     {% endif %}
     {% if clear %}
-      <div class="kv"><span>Speech clarity</span><span class="good">{{ avg(clear, "speech_clarity") }}%</span></div>
+      <div class="kv"><span>Speech clarity</span>{{ score(clear, "speech_clarity") }}</div>
     {% endif %}
     {% if voiced %}
-      <div class="kv"><span>Confidence</span><span class="good">{{ avg(voiced, "confidence_score") }}%</span></div>
-      <div class="kv"><span>Tone (pitch variation)</span><span>{{ avg(voiced, "pitch_variation", "%.1f") }} semitones</span></div>
-      <div class="kv"><span>Speaking time</span><span>{{ avg(voiced, "speech_ratio") }}%</span></div>
+      <div class="kv"><span>Confidence</span>{{ score(voiced, "confidence_score") }}</div>
+      <div class="kv"><span>Tone (pitch variation)</span><span>{% set t = avg(voiced, "pitch_variation", "%.1f") %}{{ t }}{% if t | trim != "–" %} semitones{% endif %}</span></div>
+      <div class="kv"><span>Speaking time</span><span>{% set t = avg(voiced, "speech_ratio") %}{{ t }}{% if t | trim != "–" %}%{% endif %}</span></div>
     {% endif %}
     {% if not spoken and not voiced %}<p class="muted">No speech data yet.</p>{% endif %}
   </section>
@@ -137,14 +162,14 @@
   <section class="tile tile-half">
     <h2>Behavioral Analysis</h2>
     {% if watched %}
-      <div class="kv"><span>Eye contact</span><span class="good">{{ avg(watched, "eye_contact_score") }}%</span></div>
-      <div class="kv"><span>Face visibility</span><span class="good">{{ avg(watched, "face_visibility_score") }}%</span></div>
-      <div class="kv"><span>Facial expression</span><span class="good">{{ avg(watched, "facial_expression_score") }}%</span></div>
-      <div class="kv"><span>Gestures</span><span class="good">{{ avg(watched, "gesture_score") }}%</span></div>
+      <div class="kv"><span>Eye contact</span>{{ score(watched, "eye_contact_score") }}</div>
+      <div class="kv"><span>Face visibility</span>{{ score(watched, "face_visibility_score") }}</div>
+      <div class="kv"><span>Facial expression</span>{{ score(watched, "facial_expression_score") }}</div>
+      <div class="kv"><span>Gestures</span>{{ score(watched, "gesture_score") }}</div>
       {% set gestured = watched | selectattr("expressive_gesture_ratio", "number") | list %}
       {% if gestured %}
         <div class="kv"><span>Expressive hand gestures <small class="muted">(while speaking)</small></span><span>{{ avg(gestured, "expressive_gesture_ratio") }}%</span></div>
-        <div class="kv"><span>Touching face or hair</span><span class="{{ 'warn' if (gestured | map(attribute='face_touch_ratio') | select('number') | sum) / (gestured | length) >= 15 }}">{{ avg(gestured, "face_touch_ratio") }}%</span></div>
+        <div class="kv"><span>Touching face or hair</span>{% set touch_high = (gestured | map(attribute='face_touch_ratio') | select('number') | sum) / (gestured | length) >= 15 %}<span class="{{ 'score-val lvl-ok' if touch_high }}">{{ avg(gestured, "face_touch_ratio") }}%{% if touch_high %} <small>A lot</small>{% endif %}</span></div>
         <div class="kv"><span>Hands visible</span><span>{{ avg(gestured, "hands_visible_ratio") }}%</span></div>
       {% endif %}
       <div class="kv"><span>Time smiling</span><span>{{ avg(watched, "smile_ratio") }}%</span></div>
@@ -159,7 +184,7 @@
   <h2>Answer Analysis</h2>
   {% for label, key in [("Relevance", "relevance_score"), ("Answer clarity", "clarity_score"),
                         ("Completeness", "completeness_score"), ("Grammar", "grammar_score")] %}
-    <div class="kv"><span>{{ label }}</span><span class="good">{{ avg(scored, key) }}%</span></div>
+    <div class="kv"><span>{{ label }}</span>{{ score(scored, key) }}</div>
   {% endfor %}
 
   {# ---- This interview next to the student's earlier ones ---- #}
@@ -192,7 +217,7 @@
 
 {% if fb %}
 {% set items = fb.feedback_items or [] %}
-<section class="tile {{ 'tile-wide' if scored else 'tile-full' }}">
+<section class="tile {{ 'tile-wide' if scored else 'tile-full' }}" id="sec-feedback">
   <div class="fb-head">
     {{ robot("happy", "robot-sm", defs=not evaluation) }}
     <div><h2>Feedback from {{ 'the' if admin_view else 'your' }} interviewer</h2>
@@ -238,8 +263,13 @@
 {% endif %}
 
 {# ---- Each question and answer ---- #}
-<section class="tile tile-full">
-  <h2>{{ 'Answers' if admin_view else 'Your Answers' }}</h2>
+<section class="tile tile-full" id="sec-answers">
+  <div class="answers-head">
+    <h2>{{ 'Answers' if admin_view else 'Your Answers' }}</h2>
+    {% if answers | length > 1 %}
+      <button type="button" class="btn btn-sm btn-outline" id="toggleAnswers">Open all</button>
+    {% endif %}
+  </div>
   <p class="muted small">{% if admin_view %}Transcripts and recordings are private to the student. Only scores are shown.{% else %}Click a question to open or close it. The percentage is the answer's average AI rating.{% endif %}</p>
   {% for a in answers %}
     {% set parts = [a.relevance_score, a.clarity_score, a.completeness_score, a.grammar_score] | select("number") | list %}
@@ -285,7 +315,7 @@
       {% endif %}
 
       {% if not a.audio_path and a.transcript and not admin_view %}
-        <p class="muted small">The voice recording was deleted automatically after {{ recording_days }} days. The transcript and scores are kept.</p>
+        <p class="muted small">No voice recording is stored for this answer (recordings are deleted automatically after {{ recording_days }} days). The transcript and scores are kept.</p>
       {% endif %}
       {% if a.audio_path %}
         <audio controls preload="none" src="{{ url_for('audio_file', filename=a.audio_path.split('/')[-1]) }}"></audio>
@@ -309,10 +339,10 @@
         {% endif %}
         {% if a.confidence_score is number %}
           <span>Confidence <b>{{ num(a.confidence_score) }}</b></span>
-          <span>Tone <b>{{ num(a.pitch_variation, "%.2f") }} semitones</b></span>
-          <span>Volume variation <b>{{ num(a.volume_variation, "%.2f") }} dB</b></span>
-          <span>Speaking time <b>{{ num(a.speech_ratio) }}%</b></span>
-          <span>Pauses <b>{{ num(a.total_pause_time, "%.2f") }}s total, longest {{ num(a.longest_pause, "%.2f") }}s</b></span>
+          {% if a.pitch_variation is not none %}<span>Tone <b>{{ num(a.pitch_variation, "%.2f") }} semitones</b></span>{% endif %}
+          {% if a.volume_variation is not none %}<span>Volume variation <b>{{ num(a.volume_variation, "%.2f") }} dB</b></span>{% endif %}
+          {% if a.speech_ratio is not none %}<span>Speaking time <b>{{ num(a.speech_ratio) }}%</b></span>{% endif %}
+          {% if a.total_pause_time is not none %}<span>Pauses <b>{{ num(a.total_pause_time, "%.2f") }}s total, longest {{ num(a.longest_pause, "%.2f") }}s</b></span>{% endif %}
         {% endif %}
         {% if a.eye_contact_score is number %}
           <span>Eye contact <b>{{ num(a.eye_contact_score) }}</b></span>
@@ -346,6 +376,9 @@
 </div>
 
 {% if not admin_view %}{{ chat_widget(iv.interview_id) }}{% endif %}
+<button type="button" class="back-to-top" id="backToTop" aria-label="Back to top">
+  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+</button>
 
 <script>
   // Open the answer named in the link (e.g. #q2 from the chatbot) and scroll to it
@@ -358,5 +391,38 @@
   }
   window.addEventListener("hashchange", openAnswerFromHash);
   openAnswerFromHash();
+
+  // Open all / Close all answers
+  (function () {
+    const btn = document.getElementById("toggleAnswers");
+    if (!btn) return;
+    const all = () => document.querySelectorAll("#sec-answers details.answer");
+    function label() { btn.textContent = [...all()].every(d => d.open) ? "Close all" : "Open all"; }
+    btn.addEventListener("click", () => { const open = btn.textContent === "Open all"; all().forEach(d => d.open = open); label(); });
+    all().forEach(d => d.addEventListener("toggle", label));
+    label();
+  })();
+
+  // Highlight the part of the report you are reading in the jump bar
+  (function () {
+    const links = [...document.querySelectorAll(".report-jump a")];
+    const parts = links.map(l => document.querySelector(l.getAttribute("href"))).filter(Boolean);
+    if (!("IntersectionObserver" in window) || !parts.length) return;
+    const seen = new Map();
+    const io = new IntersectionObserver(entries => {
+      entries.forEach(e => seen.set(e.target.id, e.isIntersecting ? e.intersectionRatio : 0));
+      let best = null, ratio = 0;
+      seen.forEach((r, id) => { if (r > ratio) { ratio = r; best = id; } });
+      links.forEach(l => l.classList.toggle("on", best && l.getAttribute("href") === "#" + best));
+    }, {threshold: [0, 0.15, 0.4, 0.7]});
+    parts.forEach(p => io.observe(p));
+  })();
+
+  // Back to top button appears after scrolling down
+  (function () {
+    const top = document.getElementById("backToTop");
+    window.addEventListener("scroll", () => top.classList.toggle("show", window.scrollY > 600), {passive: true});
+    top.addEventListener("click", () => window.scrollTo({top: 0, behavior: "smooth"}));
+  })();
 </script>
 {% endblock %}

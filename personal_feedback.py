@@ -405,3 +405,106 @@ def load_feedback_items(cursor, interview_id):
         if _missing_table(e):
             return []
         raise
+
+
+# ---------------------------------------------------------------- sub-skill progress (dashboard) and class view (admin)
+RATING_POINTS = {"weak": 0, "okay": 50, "strong": 100}
+DEMO_EMAIL = "demo@aimis.local"
+
+
+def _level(value):
+    return "good" if value >= 75 else "ok" if value >= 40 else "low"
+
+
+def subskill_progress(cursor, user_id, last_n=8, width=240, height=30):
+    """For each sub-skill: its level in each of the student's last interviews (strong 100, okay 50, weak 0,
+    averaged over the answers), drawn as a small trend line. Weakest skills first."""
+    try:
+        cursor.execute("""SELECT i.interview_id, i.completed_at, sl.skill, sl.rating
+                          FROM skill_labels sl
+                          JOIN responses r ON r.response_id = sl.response_id
+                          JOIN interview_questions iq ON iq.interview_question_id = r.interview_question_id
+                          JOIN interviews i ON i.interview_id = iq.interview_id
+                          WHERE i.user_id = %s ORDER BY i.interview_id""", (user_id,))
+        rows = cursor.fetchall()
+    except Exception as e:
+        if _missing_table(e):
+            return []
+        raise
+    interviews = []
+    for r in rows:
+        if r["interview_id"] not in interviews:
+            interviews.append(r["interview_id"])
+    interviews = interviews[-last_n:]
+    when = {r["interview_id"]: r["completed_at"] for r in rows}
+
+    per = {}   # skill -> interview -> [points]
+    for r in rows:
+        if r["interview_id"] in interviews and r["rating"] in RATING_POINTS:
+            per.setdefault(r["skill"], {}).setdefault(r["interview_id"], []).append(RATING_POINTS[r["rating"]])
+
+    out = []
+    for skill in SKILL_LABELS:
+        if skill not in per:
+            continue
+        points = []
+        for n, iid in enumerate(interviews):
+            vals = per[skill].get(iid)
+            if vals:
+                points.append({"n": n, "value": round(sum(vals) / len(vals)),
+                               "date": when[iid].strftime("%b %d") if when.get(iid) else f"#{n + 1}"})
+        slots = max(len(interviews) - 1, 1)
+        for p in points:          # positions inside the small chart (3 px padding)
+            p["x"] = round(3 + (width - 6) * p["n"] / slots, 1)
+            p["y"] = round(3 + (height - 6) * (1 - p["value"] / 100), 1)
+        latest, first = points[-1]["value"], points[0]["value"]
+        out.append({
+            "name": skill, "points": points, "latest": latest, "level": _level(latest),
+            "label": "Strong" if latest >= 75 else "Okay" if latest >= 40 else "Weak",
+            "change": latest - first if len(points) > 1 else None,
+            "answers": sum(len(v) for v in per[skill].values()),
+            "path": " ".join(f"{'M' if k == 0 else 'L'}{p['x']} {p['y']}" for k, p in enumerate(points)),
+        })
+    return sorted(out, key=lambda s: (s["latest"], s["name"]))
+
+
+def class_subskills(cursor):
+    """Across all students: how often each sub-skill was rated weak / okay / strong (demo account excluded)."""
+    try:
+        cursor.execute("""SELECT sl.skill, sl.rating, COUNT(*) AS n, COUNT(DISTINCT i.user_id) AS students
+                          FROM skill_labels sl
+                          JOIN responses r ON r.response_id = sl.response_id
+                          JOIN interview_questions iq ON iq.interview_question_id = r.interview_question_id
+                          JOIN interviews i ON i.interview_id = iq.interview_id
+                          JOIN users u ON u.user_id = i.user_id
+                          WHERE u.email <> %s
+                          GROUP BY sl.skill, sl.rating""", (DEMO_EMAIL,))
+        rows = cursor.fetchall()
+        cursor.execute("""SELECT sl.skill, COUNT(DISTINCT i.user_id) AS students
+                          FROM skill_labels sl
+                          JOIN responses r ON r.response_id = sl.response_id
+                          JOIN interview_questions iq ON iq.interview_question_id = r.interview_question_id
+                          JOIN interviews i ON i.interview_id = iq.interview_id
+                          JOIN users u ON u.user_id = i.user_id
+                          WHERE u.email <> %s AND sl.rating = 'weak'
+                          GROUP BY sl.skill""", (DEMO_EMAIL,))
+        weak_students = {r["skill"]: int(r["students"]) for r in cursor.fetchall()}
+    except Exception as e:
+        if _missing_table(e):
+            return []
+        raise
+    skills = {}
+    for r in rows:
+        s = skills.setdefault(r["skill"], {"name": r["skill"], "weak": 0, "okay": 0, "strong": 0})
+        if r["rating"] in RATING_POINTS:
+            s[r["rating"]] += int(r["n"])
+    out = []
+    for s in skills.values():
+        total = s["weak"] + s["okay"] + s["strong"]
+        if not total:
+            continue
+        s.update(total=total, weak_students=weak_students.get(s["name"], 0),
+                 weak_pct=round(100 * s["weak"] / total), okay_pct=round(100 * s["okay"] / total))
+        s["strong_pct"] = 100 - s["weak_pct"] - s["okay_pct"]
+        out.append(s)
+    return sorted(out, key=lambda s: -s["weak_pct"])

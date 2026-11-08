@@ -79,6 +79,29 @@
 </div>
 
 <div class="card admin-row">
+  <div class="card-head"><h2>Sub-skills across all students</h2>
+    <span class="class-legend muted small"><i class="lg lg-weak"></i>Weak <i class="lg lg-okay"></i>Okay <i class="lg lg-strong"></i>Strong</span></div>
+  {% if class_skills %}
+    <p class="muted small">How the AI rated each sub-skill in every student's answers (demo account not counted).
+      The top rows are what to teach next.</p>
+    <div class="class-skills">
+      {% for s in class_skills %}
+        <div class="class-skill" title="{{ s.weak }} weak, {{ s.okay }} okay, {{ s.strong }} strong out of {{ s.total }} answers">
+          <span class="class-skill-name">{{ s.name }}</span>
+          <span class="stack" role="img" aria-label="{{ s.name }}: {{ s.weak_pct }}% weak, {{ s.okay_pct }}% okay, {{ s.strong_pct }}% strong">
+            <i class="lg-weak" style="width: {{ s.weak_pct }}%"></i><i class="lg-okay" style="width: {{ s.okay_pct }}%"></i><i class="lg-strong" style="width: {{ s.strong_pct }}%"></i>
+          </span>
+          <span class="class-skill-pct"><b>{{ s.weak_pct }}%</b> weak</span>
+          <span class="muted small class-skill-who">{{ s.weak_students }} student{{ 's' if s.weak_students != 1 }} · {{ s.total }} answers</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="muted">Appears after interviews are scored with sub-skill labels.</p>
+  {% endif %}
+</div>
+
+<div class="card admin-row">
   <div class="card-head"><h2>Recently completed</h2><a href="{{ url_for('admin_interviews') }}" class="btn btn-sm btn-outline">All interview records</a></div>
   {% if recent %}
     <table class="data-table">

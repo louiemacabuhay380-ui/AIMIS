@@ -83,6 +83,12 @@
       <h2>Your interview skills</h2>
       {% if stats %}
       <span class="skills-head-right">
+        {% if subskills %}
+          <span class="seg-switch" role="tablist" aria-label="Skill view">
+            <button type="button" role="tab" aria-selected="true" data-view="scores">Scores</button>
+            <button type="button" role="tab" aria-selected="false" data-view="subskills">Sub-skills</button>
+          </span>
+        {% endif %}
         {% if stats.trend %}<span class="badge {{ 'badge-good' if stats.trend == 'Improving' else 'badge-warn' if stats.trend == 'Dropping' else '' }}">{{ stats.trend }}</span>{% endif %}
         <span class="muted small">Last {{ [stats.count, 5] | min }} interview{{ 's' if stats.count != 1 }}</span>
       </span>
@@ -90,7 +96,7 @@
     </div>
     {% if stats %}
   {% if skills %}
-  <div class="skills-body">
+  <div class="skills-body" data-panel="scores">
     <div class="rings-wrap">
       {# Each ring is 3/4 of a circle; its filled part shows the score (0-100). The center shows the average. #}
       {% set avg_skill = ((skills | map(attribute='value') | sum) / (skills | length)) | round | int %}
@@ -126,7 +132,7 @@
       <div class="ring-legend" aria-label="Color legend">
         <span><i class="dot ring-good"></i>Strong 75+</span>
         <span><i class="dot ring-ok"></i>Okay 50–74</span>
-        <span><i class="dot ring-low"></i>Needs work</span>
+        <span><i class="dot ring-low"></i>Needs work &lt;50</span>
       </div>
     </div>
 
@@ -154,6 +160,53 @@
   </div>
   {% else %}
     <p class="muted">Skill details will appear after your next scored interview.</p>
+  {% endif %}
+
+  {# ---- Sub-skills: how each one was rated in the last interviews (strong 100 / okay 50 / weak 0) ---- #}
+  {% if subskills %}
+  <div class="subskills-body" data-panel="subskills" hidden>
+    <p class="muted small subskills-note">How AIMIS rated each sub-skill in your answers, interview by interview
+      (top = strong, middle = okay, bottom = weak). Weakest first.</p>
+    <ul class="subskill-grid">
+      {% for s in subskills %}
+        <li class="subskill">
+          <div class="subskill-info">
+            <span class="subskill-name">{{ s.name }}</span>
+            <span class="subskill-meta"><b class="lvl-{{ s.level }}">{{ s.label }}</b>
+              {% if s.change is not none and s.change != 0 %}
+                · <span class="{{ 'up' if s.change > 0 else 'down' }}">{{ '▲ +' if s.change > 0 else '▼ ' }}{{ s.change }}</span>
+              {% endif %}
+              <span class="muted">· {{ s.answers }} ans.</span></span>
+          </div>
+          <svg class="spark" viewBox="0 0 240 30" preserveAspectRatio="xMidYMid meet" role="img"
+               aria-label="{{ s.name }}: {% for p in s.points %}{{ p.date }} {{ p.value }}{{ ', ' if not loop.last }}{% endfor %}">
+            <line class="spark-mid" x1="3" x2="237" y1="15" y2="15"/>
+            {% if s.points | length > 1 %}<path class="spark-line" d="{{ s.path }}"/>{% endif %}
+            {% for p in s.points %}
+              <circle class="spark-dot {{ 'last lvl-' ~ s.level if loop.last }}" cx="{{ p.x }}" cy="{{ p.y }}" r="{{ 3.2 if loop.last else 2.2 }}">
+                <title>{{ p.date }}: {{ 'Strong' if p.value >= 75 else 'Okay' if p.value >= 40 else 'Weak' }} ({{ p.value }})</title></circle>
+            {% endfor %}
+          </svg>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+  <script>
+    // Scores | Sub-skills switch (remembers the last choice on this browser)
+    (function () {
+      var tile = document.querySelector(".tile-skills");
+      var buttons = tile.querySelectorAll(".seg-switch button");
+      function show(view) {
+        buttons.forEach(function (b) { b.setAttribute("aria-selected", b.dataset.view === view); });
+        tile.querySelectorAll("[data-panel]").forEach(function (p) { p.hidden = p.dataset.panel !== view; });
+        try { localStorage.setItem("aimis-skill-view", view); } catch (e) {}
+      }
+      buttons.forEach(function (b) { b.addEventListener("click", function () { show(b.dataset.view); }); });
+      var saved = null;
+      try { saved = localStorage.getItem("aimis-skill-view"); } catch (e) {}
+      if (saved === "subskills") show("subskills");
+    })();
+  </script>
   {% endif %}
     {% else %}
       <div class="empty-state"><p>Your interview skills will appear here after your first scored interview.</p></div>
@@ -238,11 +291,12 @@
               </form>
             {% elif i.status == 'completed' %}
               {% if i.evaluation_id and i.overall_score is not none %}
-                <span class="badge badge-good">Score: {{ "%.0f" | format(i.overall_score) }}%</span>
+                {% set hl = 'good' if i.overall_score >= 75 else 'warn' if i.overall_score >= 50 else 'low' %}
+                <span class="badge badge-{{ hl }}">Score: {{ "%.0f" | format(i.overall_score) }}% · {{ 'Strong' if hl == 'good' else 'Okay' if hl == 'warn' else 'Needs work' }}</span>
               {% else %}
                 <span class="badge badge-warn">Not scored yet</span>
               {% endif %}
-              <a href="{{ url_for('interview_summary', interview_id=i.interview_id) }}" class="btn btn-sm">View results</a>
+              <a href="{{ url_for('interview_summary', interview_id=i.interview_id) }}" class="btn btn-sm btn-outline">View results</a>
             {% else %}
               <span class="badge">Cancelled</span>
             {% endif %}
@@ -305,7 +359,7 @@
     {% else %}
       <div class="empty-state">
         <p><b>No interviews yet.</b><br>Start your first mock interview to get feedback on your answers, voice, and body language.</p>
-        <a href="{{ url_for('start_interview') }}" class="btn">Start my first interview</a>
+        <a href="{{ url_for('start_interview') }}" class="btn btn-outline">Start my first interview</a>
       </div>
     {% endif %}
   </section>

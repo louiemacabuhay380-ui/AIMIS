@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Rate answers · AIMIS{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <p class="room-kicker admin-kicker">Evaluator</p>
+    <h1>Rate answers</h1>
+    <p>Score each answer the way you would in a real interview. You don't see the student's name or the AI's scores,
+      so your rating stays independent.</p>
+  </div>
+  <div class="rate-progress card">
+    <span class="stat-label">You have rated</span>
+    <span class="stat-value">{{ done }}</span>
+    <span class="stat-note">{{ remaining }} answer{{ 's' if remaining != 1 }} left{% if skipped %} · {{ skipped }} skipped{% endif %}</span>
+  </div>
+</div>
+
+{% if answer %}
+<form method="POST" class="rate-layout">
+  <input type="hidden" name="response_id" value="{{ answer.response_id }}">
+  <section class="card rate-answer">
+    <p class="muted small">{{ answer.category }} · {{ answer.difficulty }}</p>
+    <h2 class="rate-question">{{ answer.question_text }}</h2>
+    <p class="rate-label">Student's answer (spoken, converted to text)</p>
+    <blockquote class="rate-transcript">{{ answer.transcript }}</blockquote>
+    <p class="muted small">Don't count filler words (um, uh), punctuation or capitalization against the student; speech
+      delivery is scored separately.</p>
+  </section>
+
+  <section class="card rate-scores">
+    {% for key, label, help, levels in criteria %}
+      <fieldset class="rate-criterion">
+        <legend><b>{{ label }}</b> <span class="muted small">{{ help }}</span></legend>
+        <div class="rate-scale">
+          {% for text in levels %}
+            <label class="rate-option" title="{{ text }}">
+              <input type="radio" name="{{ key }}" value="{{ loop.index }}" required>
+              <span class="rate-num">{{ loop.index }}</span>
+              <span class="rate-text">{{ text }}</span>
+            </label>
+          {% endfor %}
+        </div>
+      </fieldset>
+    {% endfor %}
+    <label class="rate-comment">Comment (optional)
+      <textarea name="comment" rows="2" maxlength="500" placeholder="Anything the AI should have noticed?"></textarea>
+    </label>
+    <div class="rate-actions">
+      <button type="submit" class="btn">Save and next</button>
+      <a class="btn btn-outline" href="{{ url_for('rate_answers', skip=answer.response_id) }}">Skip this one</a>
+    </div>
+  </section>
+</form>
+{% else %}
+<section class="card empty-state">
+  <h2>{{ 'All done. Thank you!' if done else 'No answers to rate yet' }}</h2>
+  <p class="muted">{% if done %}You have rated every answer that is available right now. New ones appear as students
+    practice.{% else %}Answers appear here after students finish interviews and agree to evaluator review.{% endif %}</p>
+</section>
+{% endif %}
+{% endblock %}

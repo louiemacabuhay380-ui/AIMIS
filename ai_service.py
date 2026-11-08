@@ -4,6 +4,8 @@ import time
 from google import genai
 from google.genai import types, errors
 
+import offline_ai
+
 EVAL_PROMPT = """You are an interview coach evaluating a mock job interview focused on soft skills.
 The answers were spoken aloud and converted to text, so they may contain filler words
 ("um", "uh") and imperfect punctuation. Do not penalize fillers, punctuation, or capitalization;
@@ -161,35 +163,33 @@ def _generate(contents, thinking_level="low"):
     raise last_error
 
 
+def _check_evaluation(expected_answers):
+    """Validator for a local model's evaluation: every answer needs its four scores."""
+    def check(result):
+        answers = result.get("answers")
+        if not isinstance(answers, list) or len(answers) != expected_answers:
+            return f"expected {expected_answers} answers"
+        for a in answers:
+            if not isinstance(a, dict) or not all(isinstance(a.get(k), (int, float))
+                                                  for k in ("relevance", "clarity", "completeness", "grammar")):
+                return "an answer is missing its scores"
+        return None   # strengths/improvements may be missing: personal_feedback builds them from the answers
+    return check
+
+
 def _generate_ollama(prompt, expected_answers):
-    """Optional: evaluate with a local model through Ollama (set EVAL_PROVIDER=ollama in .env)."""
-    import ollama   # only needed when Ollama is used
+    """Evaluate with the local Ollama model (EVAL_PROVIDER=ollama, or as the backup when Gemini fails)."""
+    result = offline_ai.ollama_json(prompt, _check_evaluation(expected_answers))
+    result["_provider"] = "ollama"
+    return result
 
-    model = os.getenv("OLLAMA_MODEL", "llama3.1:8b")
-    last_error = None
-    for attempt in range(3):
-        try:
-            start = time.perf_counter()
-            response = ollama.chat(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                format="json",
-                options={"temperature": 0.2})
-            print(f"Ollama {model} took {time.perf_counter() - start:.1f}s")
-            result = json.loads(response["message"]["content"])
 
-            answers = result.get("answers", [])
-            keys_ok = all(k in result for k in ("strengths", "improvements"))
-            scores_ok = all(all(k in a for k in ("relevance", "clarity", "completeness", "grammar"))
-                            for a in answers)
-            if keys_ok and scores_ok and len(answers) == expected_answers:
-                return result
-            last_error = ValueError("Ollama reply was missing fields")
-            print("Ollama reply was incomplete, retrying...")
-        except (json.JSONDecodeError, ollama.ResponseError) as e:
-            last_error = e
-            print("Ollama error, retrying:", e)
-    raise last_error
+def _use_backup(what, error, available):
+    """Log why Gemini failed and whether the local backup will be used."""
+    if offline_ai.fallback_enabled() and available:
+        print(f"Gemini failed for {what} ({error}); using the local backup instead.")
+        return True
+    return False
 
 
 def _camera_line(i, qa):
@@ -222,15 +222,33 @@ def analyze_interview(category, difficulty, qa_list, history_text=""):
         history_text=("Earlier interviews of this candidate:\n" + history_text + "\n") if history_text else "")
     if os.getenv("EVAL_PROVIDER", "gemini") == "ollama":
         return _generate_ollama(prompt, expected_answers=len(qa_list))
-    return _generate(prompt, thinking_level="low")
+    try:
+        result = _generate(prompt, thinking_level="low")
+        result["_provider"] = "gemini"
+        return result
+    except Exception as e:
+        # Gemini down or out of quota: score with the local model so the interview still gets results
+        if _use_backup("scoring", e, offline_ai.ollama_available()):
+            return _generate_ollama(prompt, expected_answers=len(qa_list))
+        raise
 
 
 def transcribe_answer(question_text, audio_bytes):
-    """Transcribe one spoken answer and rate its delivery."""
-    return _generate([
-        TRANSCRIBE_PROMPT.format(question=question_text),
-        types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")],
-        thinking_level="minimal")
+    """Transcribe one spoken answer and rate its delivery.
+    TRANSCRIBE_PROVIDER=whisper runs fully offline; otherwise Whisper is the backup when Gemini fails."""
+    if os.getenv("TRANSCRIBE_PROVIDER", "gemini") == "whisper":
+        return offline_ai.transcribe_local(audio_bytes)
+    try:
+        result = _generate([
+            TRANSCRIBE_PROMPT.format(question=question_text),
+            types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")],
+            thinking_level="minimal")
+        result["_provider"] = "gemini"
+        return result
+    except Exception as e:
+        if _use_backup("speech-to-text", e, offline_ai.whisper_available()):
+            return offline_ai.transcribe_local(audio_bytes)
+        raise
 
 
 QUESTION_PROMPT = """You write questions for a mock job interview that practices SOFT SKILLS only.
@@ -256,8 +274,13 @@ Return only JSON in exactly this format:
 def generate_questions(category, difficulty, count, existing):
     """Ask Gemini for new interview questions. Returns a list of question strings."""
     sample = "\n".join(f"- {q}" for q in existing[:40]) or "- (none yet)"
-    result = _generate(QUESTION_PROMPT.format(category=category, difficulty=difficulty,
-                                              count=count, existing=sample), thinking_level="low")
+    prompt = QUESTION_PROMPT.format(category=category, difficulty=difficulty, count=count, existing=sample)
+    try:
+        result = _generate(prompt, thinking_level="low")
+    except Exception as e:
+        if not _use_backup("question writing", e, offline_ai.ollama_available()):
+            raise
+        result = offline_ai.ollama_json(prompt, lambda r: None if isinstance(r.get("questions"), list) else "no questions")
     questions = result.get("questions", []) if isinstance(result, dict) else []
     seen = {q.strip().lower() for q in existing}
     clean = []

@@ -1,5 +1,6 @@
 """Routes for AIMIS Coach, the chatbot that answers questions about the student's own interviews."""
 import json
+import time
 
 from flask import request, session, jsonify, Response, stream_with_context
 
@@ -69,7 +70,10 @@ def register(app, get_db, load_report):
     def chat_status():
         if not current_user():
             return jsonify(error="login"), 401
-        return jsonify(rag.ollama_status())
+        status = rag.ollama_status()
+        if status.get("running") and status.get("has_chat_model"):
+            rag.warm_up()          # start loading the model now, while the student types
+        return jsonify(status)
 
     def chat_ask():
         user_id = current_user()
@@ -83,6 +87,20 @@ def register(app, get_db, load_report):
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
         interview_id = own_interview(cursor, user_id, data.get("interview_id"))
+
+        # Off-topic question ("What food should I eat?"): polite fixed reply, no data looked up or sent to the AI
+        refusal = rag.off_topic_reply(question)
+        if refusal:
+            cursor.execute("INSERT INTO chat_messages (user_id, interview_id, role, content) VALUES (%s, %s, 'user', %s)",
+                           (user_id, interview_id, question))
+            cursor.execute("""INSERT INTO chat_messages (user_id, interview_id, role, content, sources)
+                              VALUES (%s, %s, 'bot', %s, '[]')""", (user_id, interview_id, refusal))
+            conn.commit()
+            conn.close()
+            response = Response(refusal, mimetype="text/plain; charset=utf-8")
+            response.headers["X-Chat-Sources"] = "[]"
+            return response
+
         try:
             rag.ensure_indexed(conn, user_id, load_report)     # 1. index anything new
         except Exception as e:
@@ -90,17 +108,19 @@ def register(app, get_db, load_report):
             if getattr(e, "errno", None) == 1146:
                 return jsonify(error="The chatbot tables are missing. Run block 7 of database/schema_updates.sql."), 500
             raise
+        started = time.perf_counter()
         context, sources, method = rag.build_context(cursor, user_id, question, interview_id)   # 2. retrieve
+        print(f"Chatbot search ({method}) took {time.perf_counter() - started:.1f}s, "
+              f"about {len(context) // 4} tokens of data")
 
         where, value = scope_sql(interview_id)
         cursor.execute(f"""SELECT role, content FROM chat_messages WHERE user_id = %s AND {where}
-                           ORDER BY message_id DESC LIMIT 6""", [user_id] + ([value] if value else []))
+                           ORDER BY message_id DESC LIMIT 4""", [user_id] + ([value] if value else []))
         history = list(reversed(cursor.fetchall()))
         cursor.execute("INSERT INTO chat_messages (user_id, interview_id, role, content) VALUES (%s, %s, 'user', %s)",
                        (user_id, interview_id, question))
         conn.commit()
         conn.close()
-        print(f"Chatbot search: {method}, {len(sources)} sources")
 
         def generate():                                         # 3. generate (streamed)
             reply = []

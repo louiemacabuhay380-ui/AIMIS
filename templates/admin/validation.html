@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Validation · Admin · AIMIS{% endblock %}
+{% macro pct(v) %}{{ "%.0f%%" | format(v) if v is number else "–" }}{% endmacro %}
+{% macro num(v, f="%.1f") %}{{ f | format(v) if v is number else "–" }}{% endmacro %}
+{% block content %}
+<div class="page-head admin-head">
+  <div><p class="room-kicker admin-kicker">Admin panel</p><h1>Validation</h1></div>
+  <a class="btn btn-outline" href="{{ url_for('admin_validation_csv') }}">Download data (CSV)</a>
+</div>
+{% include "admin/_tabs.html" %}
+{% set counts = counts if counts is defined else {"all": 0, "gemini": 0, "ollama": 0} %}
+{% set ai = ai if ai is defined else none %}
+
+{% if not ready %}
+  <div class="card"><p>The validation table is missing. Run <code>python check_setup.py --fix</code>, then reload.</p></div>
+{% else %}
+{% set overall = results | selectattr("key", "equalto", "overall") | first %}
+
+<nav class="seg-switch validation-ai" aria-label="Which AI's scores to check">
+  <a href="{{ url_for('admin_validation') }}" role="tab" aria-selected="{{ 'true' if not ai else 'false' }}">All ({{ counts.all }})</a>
+  <a href="{{ url_for('admin_validation', ai='gemini') }}" role="tab" aria-selected="{{ 'true' if ai == 'gemini' else 'false' }}">Scored by Gemini ({{ counts.gemini }})</a>
+  <a href="{{ url_for('admin_validation', ai='ollama') }}" role="tab" aria-selected="{{ 'true' if ai == 'ollama' else 'false' }}">Scored by local AI ({{ counts.ollama }})</a>
+</nav>
+
+<div class="grid-4 admin-kpis">
+  <div class="card stat"><span class="stat-label">Answers rated by humans</span><span class="stat-value">{{ answers }}</span>
+    <span class="stat-note">of {{ eligible }} that can be rated</span></div>
+  <div class="card stat"><span class="stat-label">AI vs human (r)</span>
+    <span class="stat-value">{{ num(overall.r, "%.2f") }}</span>
+    <span class="stat-note">{{ overall.strength | capitalize }} agreement</span></div>
+  <div class="card stat"><span class="stat-label">Average difference</span>
+    <span class="stat-value">{{ num(overall.mae, "%.0f") }}{% if overall.mae is number %}<small> pts</small>{% endif %}</span>
+    <span class="stat-note">out of 100</span></div>
+  <div class="card stat"><span class="stat-label">Evaluators</span><span class="stat-value">{{ raters | length }}</span>
+    <span class="stat-note">{{ multi }} answer{{ 's' if multi != 1 }} rated by 2+ evaluators</span></div>
+</div>
+
+<div class="card admin-row">
+  <h2>Do the AI's scores agree with human evaluators?</h2>
+  <p class="muted small">Evaluators score anonymous answers on the same four criteria with a 1–5 rubric, without seeing
+    the AI's scores. Their ratings are converted to 0–100 (1 = 0, 2 = 25, 3 = 50, 4 = 75, 5 = 100) and averaged when
+    several evaluators rated the same answer.</p>
+  <table class="data-table">
+    <thead><tr><th>Criterion</th><th class="num">Answers</th><th class="num">Pearson r</th><th>Strength</th>
+      <th class="num">Avg. difference</th><th class="num">Within 25 pts</th><th class="num">AI average</th><th class="num">Human average</th></tr></thead>
+    <tbody>
+      {% for r in results %}
+        <tr{% if r.key == 'overall' %} class="row-total"{% endif %}>
+          <td>{{ r.label }}</td><td class="num">{{ r.n }}</td><td class="num"><b>{{ num(r.r, "%.2f") }}</b></td>
+          <td>{{ r.strength }}</td><td class="num">{{ num(r.mae, "%.1f") }}</td><td class="num">{{ pct(r.within) }}</td>
+          <td class="num">{{ num(r.ai_mean, "%.0f") }}</td><td class="num">{{ num(r.human_mean, "%.0f") }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% if overall.n < 30 %}
+    <p class="muted small">At least 30 rated answers are recommended before reporting these results; correlations from
+      fewer answers change a lot with each new rating.</p>
+  {% endif %}
+  {% if overall.r is number %}
+    <div class="fb-banner fb-progress-note validation-sentence">
+      <b>For Chapter 4:</b> Across {{ overall.n }} answers rated by {{ raters | length }} human evaluator{{ 's' if raters | length != 1 }},
+      the AI's answer scores showed a {{ overall.strength }} positive correlation with the evaluators' scores
+      (r = {{ "%.2f" | format(overall.r) }}), with an average difference of {{ "%.1f" | format(overall.mae) }} points out of 100;
+      {{ "%.0f" | format(overall.within) }}% of the AI's scores were within one rubric level (25 points) of the evaluators'.
+    </div>
+  {% endif %}
+  <p class="muted small">How to read r: 0.80 or more very strong · 0.60 to 0.79 strong · 0.40 to 0.59 moderate ·
+    0.20 to 0.39 weak · below 0.20 very weak.</p>
+</div>
+
+<div class="grid-2 admin-row">
+  <div class="card">
+    <h2>Agreement between evaluators</h2>
+    {% if inter %}
+      <table class="data-table">
+        <thead><tr><th>Criterion</th><th class="num">Pairs</th><th class="num">Same score</th><th class="num">Within 1 level</th><th class="num">r</th></tr></thead>
+        <tbody>{% for i in inter %}
+          <tr><td>{{ i.label }}</td><td class="num">{{ i.pairs }}</td><td class="num">{{ pct(i.exact) }}</td>
+            <td class="num">{{ pct(i.adjacent) }}</td><td class="num">{{ num(i.r, "%.2f") }}</td></tr>
+        {% endfor %}</tbody>
+      </table>
+      <p class="muted small">If the evaluators often disagree with each other, the rubric needs clearer wording before
+        their scores can judge the AI.</p>
+    {% else %}
+      <p class="muted">Shown when at least two evaluators have rated the same answer. The rating page gives each
+        evaluator the answers others already rated first, so this fills in quickly.</p>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Evaluators</h2>
+    {% if raters %}
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Email</th><th class="num">Rated</th><th></th></tr></thead>
+        <tbody>{% for r in raters %}
+          <tr><td>{{ r.full_name }}</td><td>{{ r.email }}</td><td class="num">{{ r.rated }}</td>
+            <td class="num"><form method="POST" onsubmit="return confirm('Remove {{ r.email }} as an evaluator?');">
+              <input type="hidden" name="email" value="{{ r.email }}"><input type="hidden" name="action" value="remove">
+              <button type="submit" class="btn btn-outline btn-sm">Remove</button></form></td></tr>
+        {% endfor %}</tbody>
+      </table>
+    {% else %}
+      <p class="muted">No evaluators yet.</p>
+    {% endif %}
+    <form method="POST" class="form validation-add">
+      <input type="hidden" name="action" value="add">
+      <label>Add an evaluator (teacher or HR practitioner)
+        <input name="email" type="email" required placeholder="Their AIMIS account email">
+      </label>
+      <button type="submit" class="btn">Make evaluator</button>
+      <p class="muted small">They register a normal AIMIS account first. After you add them, they log in again and
+        see <b>Rate answers</b>. Only answers whose students agreed to evaluator review (consent {{ consent_versions }})
+        are shown, without names, recordings or scores.</p>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}

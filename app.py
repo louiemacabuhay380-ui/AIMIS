@@ -30,8 +30,7 @@ app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024   # max 25 MB upload
 AUDIO_DIR = os.path.join(app.root_path, "uploads", "audio")
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
-CONSENT_VERSION = "v1.2"   # v1.2 = names Google Gemini, automatic deletion of recordings, My data page
-FILLER_FEEDBACK_MIN = 3   # this many filler words or more always gets a comment in the feedback   # v1.1 = voice recording + on-device camera analysis
+CONSENT_VERSION = "v1.3"   # v1.3 = anonymous answers may be reviewed by evaluators (validation); v1.2 = Gemini, retention
 
 # Overall score weights (answer content, speech delivery, behavior)
 WEIGHT_QUALITY = 0.60
@@ -53,6 +52,8 @@ def get_db():
         buffered=True)
 
 
+import security
+security.register(app, get_db)         # CSRF tokens, login lockout, secure cookies, security headers
 password_reset.register(app, get_db)   # adds the Forgot password pages
 
 import my_data
@@ -170,6 +171,9 @@ def evaluate_interview(interview_id):
                        behavioral_score, overall_score)
                       VALUES (%s, %s, %s, %s, %s)""",
                    (interview_id, quality, speech, behavior, overall))
+    # Which AI scored it (Gemini online, or the local Ollama backup / offline mode)
+    save_ai_name(cursor, "UPDATE evaluations SET scored_by = %s WHERE interview_id = %s",
+                 (result.get("_provider", "gemini"), interview_id))
     # Feedback item by item: each one points to an exact answer, with the student's words and a fix
     items = personal_feedback.build_feedback_items(result, qa_list)
     strengths, areas, tips = personal_feedback.feedback_text(items)
@@ -190,34 +194,6 @@ def evaluate_interview(interview_id):
     conn.close()
 
 
-FILLER_PATTERN = re.compile(r"\b(um+|uh+m*|erm|ah+|eh+|ano|parang|kasi|'?yung|ganun|diba|you know|like)\b", re.I)
-
-
-def add_filler_feedback(areas, tips, qa_list):
-    """Make sure frequent filler words are always criticized, even if the AI didn't mention them."""
-    total = sum(int(qa.get("filler_word_count") or 0) for qa in qa_list)
-    if total < FILLER_FEEDBACK_MIN:
-        return areas, tips
-    if re.search(r"filler|\bum\b|\buh\b|\bano\b|parang", areas or "", re.I):
-        return areas, tips   # the AI already pointed it out
-
-    examples = []
-    for qa in qa_list:
-        for m in FILLER_PATTERN.finditer(qa.get("transcript") or ""):
-            word = m.group(0).lower()
-            if word not in examples:
-                examples.append(word)
-    shown = ", ".join(f'"{w}"' for w in examples[:4]) or '"um" and "uh"'
-    areas = (areas + " " if areas else "") + (
-        f"You used filler words about {total} times across your answers (for example {shown}). "
-        "Frequent fillers can make you sound unsure, even when your answer is good.")
-    tips = (tips + " " if tips else "") + (
-        "When you need a moment to think, pause silently for a second instead of saying a filler word; "
-        "practicing your answers out loud helps the words come more smoothly.")
-    return areas, tips
-
-
-BEHAVIOR_FEEDBACK_MIN = 60   # camera scores below this always get a comment in the feedback
 GESTURE_EXTRAS = ("hands_visible_ratio", "expressive_gesture_ratio", "face_touch_ratio")
 
 
@@ -239,59 +215,6 @@ def attach_gesture_extras(cursor, rows):
                 if k in b:
                     r[k] = b[k]
     return rows
-
-
-def behavior_summary(qa_list):
-    """Average camera scores across the answers that have them (None if the camera wasn't used)."""
-    keys = ("eye_contact_score", "facial_expression_score", "gesture_score", "face_visibility_score")
-    rows = [qa for qa in qa_list if qa.get("eye_contact_score") is not None]
-    if not rows:
-        return None
-    summary = {k: round(sum(float(qa[k] or 0) for qa in rows) / len(rows)) for k in keys}
-    for k in GESTURE_EXTRAS:                       # only answers that have the detailed numbers
-        vals = [float(qa[k]) for qa in rows if qa.get(k) is not None]
-        summary[k] = round(sum(vals) / len(vals)) if vals else None
-    return summary
-
-
-def add_behavior_feedback(areas, tips, qa_list):
-    """Make sure weak body language is always mentioned, even if the AI didn't mention it."""
-    b = behavior_summary(qa_list)
-    if not b:
-        return areas, tips
-    issues, advice = [], []
-    if b["face_visibility_score"] < 70 and not re.search(r"camera view|in the frame|visible", areas or "", re.I):
-        issues.append(f"your face was only visible to the camera about {b['face_visibility_score']}% of the time")
-        advice.append("Sit centered in front of the camera with your face well lit, so the interviewer can see you.")
-    if b["eye_contact_score"] < BEHAVIOR_FEEDBACK_MIN and not re.search(r"eye contact|looked away|looking away", areas or "", re.I):
-        issues.append(f"your eye contact was low (about {b['eye_contact_score']}%), so you often looked away from the camera")
-        advice.append("Look at the camera lens while you speak, as if it were the interviewer's eyes; "
-                      "it's fine to glance away briefly to think, then come back.")
-    if b["facial_expression_score"] < BEHAVIOR_FEEDBACK_MIN and not re.search(r"smil|expression|facial", areas or "", re.I):
-        issues.append(f"your facial expression looked tense or serious (about {b['facial_expression_score']}%)")
-        advice.append("Smile naturally when you greet the interviewer and when you talk about something positive.")
-    touch = b.get("face_touch_ratio")
-    expressive = b.get("expressive_gesture_ratio")
-    hands = b.get("hands_visible_ratio")
-    mentioned = re.search(r"gesture|hand|fidget|touch", areas or "", re.I)
-    if touch is not None and touch >= 15 and not mentioned:
-        issues.append(f"you touched your face or hair about {touch}% of the time, which can look nervous")
-        advice.append("Rest your hands on the table or in your lap between points instead of touching your face.")
-    elif b["gesture_score"] < BEHAVIOR_FEEDBACK_MIN and not mentioned:
-        issues.append("your hand movements were very frequent or fast, which can distract from what you say")
-        advice.append("Keep your hands relaxed and use small gestures only to stress important points.")
-    elif expressive is not None and expressive < 5 and not mentioned:
-        # Not a mistake, just a tip: gestures help, but nobody must use them
-        tip = ("Try using a few open-hand gestures at chest level while you talk, for example counting points on "
-               "your fingers; it makes your answers look more confident and easier to follow.")
-        if hands is not None and hands < 10:
-            tip = "Sit a little farther back so your hands are visible too. " + tip
-        advice.append(tip)
-    if not issues:
-        return areas, ((tips + " " if tips else "") + " ".join(advice)) if advice else tips
-    sentence = "On body language, " + "; ".join(issues) + "."
-    return ((areas + " " if areas else "") + sentence[0].upper() + sentence[1:],
-            (tips + " " if tips else "") + " ".join(advice))
 
 
 def transcribe_pending(interview_id):
@@ -345,6 +268,8 @@ def transcribe_pending(interview_id):
                             f.get("pitch_variation"), f.get("average_volume"), f.get("volume_variation"),
                             f.get("speech_ratio"), f.get("confidence_score", 0),
                             min(max(float(result.get("clarity_score", 0)), 0), 100)))
+            save_ai_name(cursor, "UPDATE speech_analysis SET transcribed_by = %s WHERE response_id = %s",
+                         (result.get("_provider", "gemini"), row["response_id"]))
             conn.commit()
     conn.close()
 
@@ -418,6 +343,8 @@ def login():
             session["role"] = user["role"]
             if user["role"] == "admin":
                 return redirect(url_for("admin_overview"))
+            if user["role"] == "rater":
+                return redirect(url_for("rate_answers"))
             return redirect(url_for("dashboard"))
 
         flash("Incorrect email or password.")
@@ -456,6 +383,7 @@ def dashboard():
     history = cursor.fetchall()
     skills = skill_breakdown(cursor, session["user_id"])
     weak_skill = personal_feedback.weakest_skill(cursor, session["user_id"])
+    subskills = personal_feedback.subskill_progress(cursor, session["user_id"])
     conn.close()
 
     chart = {
@@ -488,7 +416,7 @@ def dashboard():
 
     focus = min(skills, key=lambda s: s["value"]) if skills else None
     return render_template("dashboard.html", interviews=interviews, chart=chart, stats=stats,
-                           skills=skills, focus=focus, weak_skill=weak_skill)
+                           skills=skills, focus=focus, weak_skill=weak_skill, subskills=subskills)
 
 
 # Skill rings on the dashboard: name, how it's computed, and a tip for improving it
@@ -867,6 +795,41 @@ def retry_evaluation(interview_id):
     return redirect(url_for("interview_summary", interview_id=interview_id))
 
 
+AI_NAMES = {"gemini": "Gemini (online)", "ollama": "Local AI, offline (Ollama)",
+            "whisper": "Local AI, offline (Whisper)"}
+
+
+def save_ai_name(cursor, sql, params):
+    """Record which AI did the work. Skipped quietly on a database without the column (run check_setup --fix)."""
+    try:
+        cursor.execute(sql, params)
+    except Exception as e:
+        if getattr(e, "errno", None) != 1054:
+            raise
+
+
+def attach_transcriber(cursor, answers):
+    """Add .transcribed_by to each answer (None on older databases or older interviews)."""
+    ids = [a["response_id"] for a in answers if a.get("response_id")]
+    for a in answers:
+        a["transcribed_by"] = None
+    if not ids:
+        return
+    try:
+        cursor.execute(f"SELECT response_id, transcribed_by FROM speech_analysis WHERE response_id IN "
+                       f"({', '.join(['%s'] * len(ids))})", ids)
+        found = {r["response_id"]: r["transcribed_by"] for r in cursor.fetchall()}
+    except Exception as e:
+        if getattr(e, "errno", None) == 1054:
+            return
+        raise
+    for a in answers:
+        a["transcribed_by"] = found.get(a.get("response_id"))
+
+
+app.jinja_env.globals["AI_NAMES"] = AI_NAMES
+
+
 def load_report(cursor, interview_id):
     """Answers, scores and feedback for one interview (used by the student report and the admin view)."""
     cursor.execute("""SELECT iq.question_order, qb.question_text, r.response_id, r.transcript, r.audio_path,
@@ -888,6 +851,7 @@ def load_report(cursor, interview_id):
                       ORDER BY iq.question_order""", (interview_id,))
     answers = attach_gesture_extras(cursor, cursor.fetchall())
     answers = personal_feedback.attach_answer_feedback(cursor, answers)
+    attach_transcriber(cursor, answers)
     cursor.execute("SELECT * FROM evaluations WHERE interview_id = %s", (interview_id,))
     evaluation = cursor.fetchone()
     cursor.execute("SELECT * FROM feedback WHERE interview_id = %s ORDER BY created_at DESC LIMIT 1",
@@ -949,10 +913,16 @@ import admin
 from ai_service import generate_questions
 admin.register(app, get_db, load_report, generate_questions)
 
+# Validation: human evaluators score anonymous answers; the admin compares them with the AI
+import validation
+validation.register(app, get_db)
+
 # AIMIS Coach chatbot (RAG over the student's own interviews)
 import chatbot
 chatbot.register(app, get_db, load_report)
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    # Debug mode shows code and lets the browser run Python if an error happens, so it is OFF unless
+    # FLASK_DEBUG=1 is set in .env (only on your own computer, never on a shared network).
+    app.run(debug=os.getenv("FLASK_DEBUG") == "1")

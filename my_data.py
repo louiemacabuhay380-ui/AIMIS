@@ -58,7 +58,8 @@ def delete_user_data(conn, root_path, user_id, delete_account=False):
 
     try:
         # Children first, so foreign keys never block the delete
-        for table in ("nlp_analysis", "speech_analysis", "behavior_analysis", "answer_feedback", "skill_labels"):
+        for table in ("nlp_analysis", "speech_analysis", "behavior_analysis", "answer_feedback", "skill_labels",
+                      "human_ratings"):
             _delete(cursor, table, "response_id", response_ids)
         _delete(cursor, "responses", "response_id", response_ids)
         _delete(cursor, "interview_questions", "interview_question_id", question_ids)
@@ -68,6 +69,7 @@ def delete_user_data(conn, root_path, user_id, delete_account=False):
             _delete(cursor, table, "user_id", [user_id])
         _delete(cursor, "interviews", "interview_id", interview_ids)
         if delete_account:
+            _delete(cursor, "human_ratings", "rater_id", [user_id])   # ratings this person gave as an evaluator
             _delete(cursor, "users", "user_id", [user_id])
         conn.commit()
     except Exception:

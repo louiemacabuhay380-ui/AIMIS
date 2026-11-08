@@ -5,6 +5,32 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}AIMIS{% endblock %}</title>
 
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <script>
+    // Security: send this site's secret CSRF token with every form and every POST request
+    (function () {
+      const token = document.querySelector('meta[name="csrf-token"]').content;
+      const send = window.fetch.bind(window);
+      window.fetch = function (url, options) {
+        options = options || {};
+        const method = (options.method || "GET").toUpperCase();
+        const sameSite = typeof url !== "string" || !/^https?:/i.test(url) || url.indexOf(location.origin) === 0;
+        if (method !== "GET" && sameSite) {
+          options.headers = new Headers(options.headers || {});
+          options.headers.set("X-CSRF-Token", token);
+        }
+        return send(url, options);
+      };
+      function addToken(form) {
+        if ((form.method || "").toLowerCase() !== "post" || form.querySelector('input[name="csrf_token"]')) return;
+        const input = document.createElement("input");
+        input.type = "hidden"; input.name = "csrf_token"; input.value = token;
+        form.appendChild(input);
+      }
+      document.addEventListener("submit", function (e) { addToken(e.target); }, true);
+      document.addEventListener("DOMContentLoaded", function () { document.querySelectorAll("form").forEach(addToken); });
+    })();
+  </script>
   <!-- Apply the saved theme before the page draws, so it never flashes the wrong colors -->
   <script>
     (function () {
@@ -68,6 +94,10 @@
         {% if session.get('user_id') %}
           <a href="{{ url_for('dashboard') }}"
              class="nav-link {{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a>
+          {% if session.get('role') == 'rater' %}
+            <a href="{{ url_for('rate_answers') }}"
+               class="nav-link {{ 'active' if request.endpoint == 'rate_answers' }}">Rate answers</a>
+          {% endif %}
           {% if session.get('role') == 'admin' %}
             <a href="{{ url_for('admin_overview') }}"
                class="nav-link {{ 'active' if request.endpoint and request.endpoint.startswith('admin') }}">Admin</a>

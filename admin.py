@@ -14,6 +14,8 @@ import string
 from datetime import date, timedelta
 from functools import wraps
 
+import personal_feedback
+
 from flask import render_template, request, redirect, url_for, flash, session, Response
 from werkzeug.security import generate_password_hash
 
@@ -171,8 +173,9 @@ def register(app, get_db, load_report, generate_questions):
             pending = cursor.fetchone()["n"]
         except Exception:
             pass   # the review column isn't added yet (schema block 6)
+        class_skills = personal_feedback.class_subskills(cursor)   # sub-skills across all students
         conn.close()
-        return render_template("admin/overview.html", active="overview",
+        return render_template("admin/overview.html", active="overview", class_skills=class_skills,
                                stats={"students": students, "active_week": active_week,
                                       "done": int(done["total"] or 0), "done_week": int(done["week"] or 0),
                                       "overall": num(avg["overall"]), "quality": num(avg["quality"]),
@@ -391,7 +394,7 @@ def register(app, get_db, load_report, generate_questions):
         if view == "pending":
             where.append("qb.review_status = 'pending'")
         elif view == "off":
-            where.append("qb.is_active = 0 AND COALESCE(qb.review_status, 'approved') <> 'pending'")
+            where.append("qb.is_active = 0 AND COALESCE(qb.review_status, 'approved') NOT IN ('pending', 'demo')")
         else:
             where.append("qb.is_active = 1")
         if category:
@@ -409,7 +412,7 @@ def register(app, get_db, load_report, generate_questions):
                                         qb.question_id DESC""", values)
             questions = cursor.fetchall()
             cursor.execute("""SELECT SUM(is_active = 1) AS active, SUM(review_status = 'pending') AS pending,
-                                     SUM(is_active = 0 AND review_status <> 'pending') AS off
+                                     SUM(is_active = 0 AND review_status NOT IN ('pending', 'demo')) AS off
                               FROM question_bank""")
             counts = cursor.fetchone()
             ready = True
