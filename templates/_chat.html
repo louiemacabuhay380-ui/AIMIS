@@ -30,19 +30,19 @@
       <div class="coach-msg bot coach-intro">
         Hi! I'm AIMIS Coach. Ask me anything about {{ 'this interview' if on_report else 'your mock interviews' }}:
         where you were weak, why a score is low, or how to improve an answer. I only use your own results,
-        and I'll tell you the exact question. You can ask in English, Filipino or Taglish.
+        and I'll tell you the exact question. You can ask in English, Filipino or Taglish, and I'll answer in English.
       </div>
     </div>
 
     <div class="coach-suggest" id="coachSuggest">
       {% if on_report %}
         {% set ideas = ["Which answer was my weakest, and why?",
-                        "Saang part ako mahina sa critical thinking?",
+                        "Where was I weak in critical thinking?",
                         "How can I improve my answer to question 1?",
-                        "Bakit mababa ang speech score ko?"] %}
+                        "Why is my speech score low?"] %}
       {% else %}
         {% set ideas = ["What should I focus on next?",
-                        "Saang interview ako mahina sa critical thinking?",
+                        "Which interview was weakest in critical thinking?",
                         "How much have I improved since my first interview?",
                         "Which of my answers was the best?"] %}
       {% endif %}
@@ -167,6 +167,11 @@
     const bot = addMessage("bot", "");
     bot.classList.add("typing");
     bot.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
+    // If the local AI is slow (e.g. loading the model), say so instead of looking frozen
+    const slow = setTimeout(function () {
+      if (bot.classList.contains("typing"))
+        bot.insertAdjacentHTML("beforeend", '<span class="coach-wait">Reading your interview results… the first answer can take a little longer while the AI loads.</span>');
+    }, 4000);
 
     fetch("{{ url_for('chat_ask') }}", {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -199,7 +204,7 @@
       bot.classList.remove("typing");
       bot.classList.add("error");
       bot.textContent = err.message || "Couldn't reach the server.";
-    }).finally(function () { busy = false; send.disabled = false; input.focus(); });
+    }).finally(function () { clearTimeout(slow); busy = false; send.disabled = false; input.focus(); });
   }
 
   form.addEventListener("submit", function (e) { e.preventDefault(); ask(input.value); });

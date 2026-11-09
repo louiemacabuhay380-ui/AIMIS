@@ -18,7 +18,7 @@ Capstone project of Group 6, First City Providential College.
 - **Specific feedback:** every point names the answer, quotes the student, and gives a fix and an example answer;
   sub-skill labels (critical thinking, problem solving, …) on every answer; comparison with earlier interviews.
 - **AIMIS Coach:** a chatbot that answers questions about the student's own interviews using RAG
-  (local Ollama models, English / Filipino / Taglish).
+  (local Ollama models; understands English, Filipino and Taglish questions, always replies in English).
 - **Dashboard:** skill rings, sub-skill trend lines, history.
 - **Admin panel:** overview (incl. sub-skills across all students), users, interview records + CSV,
   AI-written questions with admin review, **validation** (human evaluators vs AI).
