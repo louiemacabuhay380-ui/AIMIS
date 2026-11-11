@@ -5,7 +5,9 @@
 {% set here = request.full_path %}
 <div class="page-head admin-head">
   <div><p class="room-kicker admin-kicker">Admin panel</p><h1>Questions</h1>
-    <p>The AI writes new soft-skill questions. You review them before students see them.</p></div>
+    <p>Interviews are conversations: the AI writes each question live from the student's answers and target job.
+      These reviewed bank questions are the backup when the AI is unavailable. Questions written live are private
+      to the student and are not listed here.</p></div>
 </div>
 {% include "admin/_tabs.html" %}
 
@@ -29,6 +31,9 @@
         {% for d in difficulties %}<option {{ 'selected' if difficulty == d }}>{{ d }}</option>{% endfor %}</select></label>
       <label>How many<input name="count" type="number" min="1" max="10" value="5" class="num-input"></label>
     </div>
+    <label>For which job<select name="career_track">
+      <option value="">Any job (general)</option>
+      {% for c in career_names %}<option>{{ c }}</option>{% endfor %}</select></label>
     <input type="hidden" name="next" value="{{ here }}">
     <button type="submit" class="btn">Generate questions</button>
   </form>
@@ -80,7 +85,8 @@
         <p class="q-text">{{ q.question_text }}</p>
         <p class="q-meta">
           <span class="badge">{{ q.category }}</span> <span class="badge">{{ q.difficulty }}</span>
-          {% if q.source == 'ai' %}<span class="badge badge-ai">AI-written</span>{% elif q.source == 'admin' %}<span class="badge">Added by admin</span>{% endif %}
+          {% if q.source == 'ai' %}<span class="badge badge-ai">AI-written</span>{% elif q.source == 'admin' %}<span class="badge">Added by admin</span>{% elif q.source == 'live' %}<span class="badge badge-ai">Written live for a student</span>{% endif %}
+          {% if q.career_track %}<span class="badge">{{ q.career_track }}</span>{% endif %}
           <span class="muted small">Asked {{ q.times_asked }} time{{ 's' if q.times_asked != 1 }}</span>
         </p>
         <details class="q-edit">
@@ -104,7 +110,7 @@
             <input type="hidden" name="next" value="{{ here }}"><button class="btn btn-outline btn-sm" type="submit">Turn off</button></form>
         {% else %}
           <form method="POST" action="{{ url_for('admin_question_action', question_id=q.question_id, action='turn_on') }}">
-            <input type="hidden" name="next" value="{{ here }}"><button class="btn btn-sm" type="submit">Turn on</button></form>
+            <input type="hidden" name="next" value="{{ here }}"><button class="btn btn-sm" type="submit">{{ 'Add to bank' if q.review_status == 'live' else 'Turn on' }}</button></form>
         {% endif %}
       </div>
     </li>

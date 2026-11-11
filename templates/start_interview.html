@@ -8,20 +8,27 @@
 <div class="page-head">
   <div>
     <h1>Set up your mock interview</h1>
-    <p>Choose a soft skill, how hard the questions should be, and how many you want.</p>
+    <p>Choose a skill, how hard the questions should be, and how many you want.</p>
   </div>
+</div>
+
+<div class="career-banner card">
+  <span class="career-banner-label">Interview for</span>
+  <b class="career-banner-job">{{ career }}</b>
+  <span class="muted small">{% if adaptive %}A conversation: AIMIS Bot writes each question from your answers (it asks your name only in your first interview).{% elif live %}AIMIS Bot writes new questions for this job each time.{% else %}Questions for this job come first.{% endif %}</span>
+  <a href="{{ url_for('career_goal', next=request.path) }}" class="btn btn-sm btn-outline">Change job</a>
 </div>
 
 <ol class="how-steps">
   <li><span class="step-num">1</span><span><b>Check devices</b>Make sure your microphone and camera work.</span></li>
-  <li><span class="step-num">2</span><span><b>Answer out loud</b>The interviewer asks each question; you answer by speaking.</span></li>
+  <li><span class="step-num">2</span><span><b>Answer out loud</b>The interviewer asks each question{% if adaptive %} and may ask a follow-up about your answer{% endif %}; you answer by speaking.</span></li>
   <li><span class="step-num">3</span><span><b>Get feedback</b>See your scores and tips to improve.</span></li>
 </ol>
 
 <div class="setup">
   <form method="POST" class="card form setup-form">
     <fieldset class="field">
-      <legend>1. Which skill do you want to practice?</legend>
+      <legend>1. Which communication or behavioral skill do you want to practice?</legend>
       <div class="pick-grid">
         {% for c in categories %}
           <label class="pick">
@@ -33,7 +40,7 @@
           </label>
         {% endfor %}
       </div>
-      <span class="field-hint">Questions are picked at random, and ones you haven't answered yet come first.</span>
+      <span class="field-hint">{% if adaptive %}There is no fixed list: the questions are about situations in your target job and follow from what you say.{% elif live %}The questions are about situations in your target job, and you won't get the same ones twice in a row.{% else %}Questions are picked at random, and ones you haven't answered yet come first.{% endif %}</span>
     </fieldset>
 
     <fieldset class="field">
@@ -49,8 +56,8 @@
     </fieldset>
 
     <label class="field-label">3. Number of questions
-      <input name="number_of_questions" type="number" min="1" max="10" value="3" class="num-input">
-      <span class="field-hint">1 to 10. Each answer can be up to 3 minutes.</span>
+      <input name="number_of_questions" type="number" min="{{ 2 if adaptive else 1 }}" max="10" value="{{ 4 if adaptive else 3 }}" class="num-input">
+      <span class="field-hint">{% if adaptive %}2 to 10 main questions (in your first interview this includes your introduction). Follow-up questions don't count toward this number.{% else %}1 to 10.{% endif %} Each answer can be up to 3 minutes.</span>
     </label>
 
     <label class="consent">
@@ -58,7 +65,7 @@
       <span>I agree to have my voice recorded and my camera used during this interview.
         <ul class="consent-list">
           <li>My voice recordings are stored encrypted and sent to <b>Google Gemini</b>, a third-party AI
-            service, to turn my speech into text and score my answers. Google's free service may use this
+            service, to turn my speech into text, let the interviewer respond to my answers, and score them. Google's free service may use this
             content to improve its products.</li>
           <li>My camera is analyzed only on this device. Video is never recorded or uploaded; only the
             behavior scores are saved.</li>
@@ -71,14 +78,14 @@
     </label>
 
     <div class="btn-row">
-      <button type="submit" class="btn btn-lg">{{ ui_icon("play", 16) }} Begin interview</button>
+      <button type="submit" class="btn btn-lg" id="beginBtn">{{ ui_icon("play", 16) }} Begin interview</button>
       <a href="{{ url_for('dashboard') }}" class="btn btn-outline btn-lg">Back</a>
     </div>
   </form>
 
   <aside class="setup-bot card">
     {{ robot("happy") }}
-    <div class="speech speech-up">Pick a skill and I'll prepare the questions. I'll read each one out loud, then listen to your answer.</div>
+    <div class="speech speech-up">Pick a skill and I'll prepare interview questions for your target job: {{ career }}. I'll read each one out loud, listen to your answer, and respond like a real interviewer.</div>
     <ul class="bot-tips">
       <li>{{ ui_icon("mic", 16) }} Use a quiet room</li>
       <li>{{ ui_icon("camera", 16) }} Keep your face in the camera</li>
@@ -86,4 +93,14 @@
     </ul>
   </aside>
 </div>
+<script>
+  // Writing new questions takes a few seconds: show it, and stop double submits
+  document.querySelector(".setup-form").addEventListener("submit", e => {
+    const btn = document.getElementById("beginBtn");
+    if (btn.dataset.busy) { e.preventDefault(); return; }
+    btn.dataset.busy = "1";
+    btn.setAttribute("aria-busy", "true");
+    btn.textContent = "{{ 'Writing your questions...' if live and not adaptive else 'Preparing...' }}";
+  });
+</script>
 {% endblock %}

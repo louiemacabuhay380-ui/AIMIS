@@ -1,20 +1,28 @@
 # AIMIS — AI Mock Interview System
 
-A web system where college students and fresh graduates practice **soft-skill job interviews** by voice.
-An on-screen interviewer (AIMIS Bot) asks questions out loud, the student answers by speaking, and AIMIS
-scores the answer, the speech and the body language, then gives specific feedback.
+A web system where college students and fresh graduates practice **job interviews for their target career** by
+voice, focused on communication and behavioral skills. An on-screen interviewer (AIMIS Bot) asks questions out loud,
+the student answers by speaking, the interviewer responds and may ask a follow-up, and AIMIS scores what was said
+and how it was said, then gives specific feedback.
 
 Capstone project of Group 6, First City Providential College.
 
 ## Features
 
-- **Mock interview:** 8 soft skills × 3 levels, questions read aloud, spoken answers, live transcript (Chrome/Edge),
-  camera face check before starting.
-- **Scoring:** Overall = 60% response quality + 25% speech + 15% behavior (weighted average, rescaled when a part is
-  missing, e.g. no camera).
-  - Response quality: relevance, clarity, completeness, grammar (AI, 0–100)
-  - Speech: fluency, clarity (AI) and confidence (pauses, pitch, volume, filler words; librosa)
-  - Behavior: eye contact, facial expression, hand gestures (MediaPipe, runs in the browser; video is never uploaded)
+- **Career goal:** after creating an account the student picks the job they are preparing for (e.g. IT professional);
+  it can be changed anytime. Edit the list in `careers.py`.
+- **Conversational interview (no preset questions):** 8 communication/behavioral skills × 3 levels. AIMIS Bot opens
+  by asking the student's name and about themselves; after each answer it replies, then asks either ONE follow-up
+  (vague answer, no example or no result) or the next question, written live from the conversation, the target
+  job, the skill and the level. Approved bank questions are the backup when the AI is unavailable. Questions read
+  aloud, spoken answers, live transcript (Chrome/Edge), camera face check before starting.
+- **Scoring (rubric v2, all in `scoring.py`):** two separate scores, every criterion 0–100 with 5 described levels.
+  - **Answer Effectiveness** (what was said, would it work in a real interview): relevance, directness,
+    structure (STAR), specific evidence, 25% each.
+  - **Communication Delivery** (how it was said): 60% verbal (fluency, speech clarity, vocal confidence, grammar)
+    + 40% nonverbal (eye contact 50%, facial expression 25%, gestures 25%; MediaPipe in the browser).
+  - **Interview readiness** = 60% Answer Effectiveness + 40% Communication Delivery, plus a performance profile
+    (e.g. "Effective answers, delivery needs polish"). Missing parts (no camera) are left out and the rest rescaled.
 - **Specific feedback:** every point names the answer, quotes the student, and gives a fix and an example answer;
   sub-skill labels (critical thinking, problem solving, …) on every answer; comparison with earlier interviews.
 - **AIMIS Coach:** a chatbot that answers questions about the student's own interviews using RAG
@@ -63,6 +71,7 @@ See `.env.example` for every setting. The important ones:
 | `OLLAMA_CHAT_MODEL`, `OLLAMA_EMBED_MODEL` | Local models for the chatbot and backup scoring |
 | `RECORDING_RETENTION_DAYS` | Recordings older than this are deleted automatically (default 30) |
 | `MAIL_USERNAME`, `MAIL_PASSWORD` | Gmail App Password for Forgot password emails |
+| `ADAPTIVE_INTERVIEW=0` | Fixed question list instead of the conversation (default: conversation) |
 | `FLASK_DEBUG=1` | Debug mode, only on your own laptop |
 
 Never push `.env`, `uploads/` or CSV exports with names to GitHub.

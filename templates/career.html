@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_robot.html" import robot %}
+{% block title %}Your career goal · AIMIS{% endblock %}
+
+{% block content %}
+{% set known = careers | map(attribute=0) | list %}
+{% set custom = current if current and current not in known else "" %}
+<div class="page-head">
+  <div>
+    {% if first %}<p class="room-kicker">Step 2 of 2 · Account setup</p>{% endif %}
+    <h1>What job are you preparing for?</h1>
+    <p>AIMIS Bot will ask interview questions set in this job, the way an interviewer hiring for it would.
+      You are still scored on how you communicate and behave, not on technical knowledge.</p>
+  </div>
+</div>
+
+<div class="setup">
+  <form method="POST" class="card form setup-form" id="careerForm">
+    <input type="hidden" name="first" value="{{ '1' if first }}">
+    <input type="hidden" name="next" value="{{ next }}">
+    <fieldset class="field">
+      <legend>Your career goal</legend>
+      <div class="pick-grid career-grid">
+        {% for name, desc in careers %}
+          <label class="pick">
+            <input type="radio" name="career_goal" value="{{ name }}" {{ 'checked' if current == name }} required>
+            <span class="pick-card career-card">
+              <span class="pick-name">{{ name }}</span>
+              <span class="career-desc">{{ desc[:1] | upper }}{{ desc[1:] }}</span>
+            </span>
+          </label>
+        {% endfor %}
+        <label class="pick">
+          <input type="radio" name="career_goal" value="{{ other }}" id="careerOther" {{ 'checked' if custom }}>
+          <span class="pick-card career-card">
+            <span class="pick-name">Something else</span>
+            <span class="career-desc">Type the job you want</span>
+          </span>
+        </label>
+      </div>
+    </fieldset>
+
+    <label class="field-label" id="otherBox" {{ '' if custom else 'hidden' }}>Type your target job
+      <input name="career_other" id="careerOtherText" maxlength="{{ max_length }}" value="{{ custom }}"
+             placeholder="e.g. Graphic designer, Flight attendant">
+      <span class="field-hint">Letters and simple punctuation, up to {{ max_length }} characters.</span>
+    </label>
+
+    <div class="btn-row">
+      <button type="submit" class="btn btn-lg">{{ 'Continue' if first else 'Save career goal' }}</button>
+      {% if not first %}<a href="{{ next or url_for('dashboard') }}" class="btn btn-outline btn-lg">Cancel</a>{% endif %}
+    </div>
+  </form>
+
+  <aside class="setup-bot card">
+    {{ robot("happy") }}
+    <div class="speech speech-up">If you pick <b>IT professional</b>, I might ask: "Tell me about a time you had to
+      explain a technical problem to someone who isn't technical."</div>
+    <ul class="bot-tips">
+      <li>You can change this anytime from your dashboard.</li>
+      <li>Your past reports keep the job they were for.</li>
+    </ul>
+  </aside>
+</div>
+
+<script>
+  (function () {
+    const other = document.getElementById("careerOther");
+    const box = document.getElementById("otherBox");
+    const text = document.getElementById("careerOtherText");
+    function sync() {
+      box.hidden = !other.checked;
+      text.required = other.checked;
+      if (other.checked) text.focus();
+    }
+    document.querySelectorAll('input[name="career_goal"]').forEach(r => r.addEventListener("change", sync));
+    box.hidden = !other.checked;
+    text.required = other.checked;
+  })();
+</script>
+{% endblock %}

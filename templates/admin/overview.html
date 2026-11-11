@@ -37,7 +37,7 @@
 
   <section class="tile a-avg">
     <h2>Average scores</h2>
-    {% for label, v in [("Response quality", stats.quality), ("Speech performance", stats.speech), ("Body language", stats.behavior)] %}
+    {% for label, v in [("Answer effectiveness", stats.quality), ("Verbal delivery", stats.speech), ("Nonverbal delivery", stats.behavior)] %}
       <div class="score-row">
         <div class="label-line"><span>{{ label }}</span><span>{{ "%.0f%%" | format(v) if v is number else "–" }}</span></div>
         <div class="bar"><span style="width: {{ v if v is number else 0 }}%"></span></div>

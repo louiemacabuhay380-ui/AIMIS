@@ -93,22 +93,23 @@ print("\n3. Database")
 DEC = "DECIMAL(5,2) NULL"
 SCHEMA = {
     "users": {"user_id": None, "full_name": None, "email": None, "password": None, "role": None,
-              "is_active": "TINYINT(1) NOT NULL DEFAULT 1"},
+              "is_active": "TINYINT(1) NOT NULL DEFAULT 1", "career_goal": "VARCHAR(80) NULL"},
     "interviews": {"interview_id": None, "user_id": None, "category": None, "difficulty": None,
                    "number_of_questions": None, "status": None, "started_at": None, "completed_at": None,
-                   "overall_score": None},
+                   "overall_score": None, "career_goal": "VARCHAR(80) NULL"},
     "question_bank": {"question_id": None, "category": None, "difficulty": None, "question_text": None,
                       "is_active": None, "source": "VARCHAR(10) NOT NULL DEFAULT 'manual'",
-                      "review_status": "VARCHAR(10) NOT NULL DEFAULT 'approved'"},
+                      "review_status": "VARCHAR(10) NOT NULL DEFAULT 'approved'",
+                      "career_track": "VARCHAR(80) NULL"},
     "interview_questions": {"interview_question_id": None, "interview_id": None, "question_id": None,
-                            "question_order": None},
+                            "question_order": None, "parent_iq_id": "INT NULL"},
     "responses": {"response_id": None, "interview_question_id": None, "transcript": None, "audio_path": None,
                   "duration": None},
     "consents": {"user_id": None, "interview_id": None, "consent_given": None, "consent_version": None},
     "nlp_analysis": {"response_id": None, "relevance_score": None, "clarity_score": None,
                      "completeness_score": None, "grammar_score": None, "word_count": "INT NULL",
                      "sentence_count": "INT NULL", "vocabulary_diversity": DEC, "keyword_count": "INT NULL",
-                     "keywords_found": "VARCHAR(500) NULL"},
+                     "keywords_found": "VARCHAR(500) NULL", "directness_score": DEC, "specificity_score": DEC},
     "speech_analysis": {"response_id": None, "speaking_rate": None, "filler_word_count": None, "pause_count": None,
                         "speech_duration": None, "fluency_score": None, "total_pause_time": "DECIMAL(6,2) NULL",
                         "longest_pause": "DECIMAL(6,2) NULL", "average_pause": "DECIMAL(6,2) NULL",
@@ -120,7 +121,8 @@ SCHEMA = {
                           "gesture_ratio": DEC, "frames_analyzed": "INT NULL", "hands_visible_ratio": DEC,
                           "expressive_gesture_ratio": DEC, "face_touch_ratio": DEC},
     "evaluations": {"interview_id": None, "response_quality_score": None, "speech_performance_score": None,
-                    "behavioral_score": None, "overall_score": None, "scored_by": "VARCHAR(20) NULL"},
+                    "behavioral_score": None, "overall_score": None, "scored_by": "VARCHAR(20) NULL",
+                    "delivery_score": DEC, "performance_profile": "VARCHAR(20) NULL", "rubric_version": "VARCHAR(10) NULL"},
     "feedback": {"interview_id": None, "strengths": None, "areas_to_improve": None, "recommendations": None},
 }
 # New tables, created whole by --fix (same as the SQL files in database/, kept here so no file is needed)
@@ -147,7 +149,8 @@ NEW_TABLES = {
         INDEX idx_item_interview (interview_id))""",
     "human_ratings": """CREATE TABLE IF NOT EXISTS human_ratings (
         rating_id INT AUTO_INCREMENT PRIMARY KEY, response_id INT NOT NULL, rater_id INT NOT NULL,
-        relevance TINYINT NOT NULL, clarity TINYINT NOT NULL, completeness TINYINT NOT NULL, grammar TINYINT NOT NULL,
+        relevance TINYINT NOT NULL, clarity TINYINT NULL, completeness TINYINT NOT NULL, grammar TINYINT NOT NULL,
+        directness TINYINT NULL, specificity TINYINT NULL,
         comment VARCHAR(500) NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uq_rating (response_id, rater_id), INDEX idx_rating_rater (rater_id))""",
 }
@@ -225,6 +228,19 @@ if conn:
             ok(f"{table}: created")
         else:
             fail(f"Table '{table}' is missing", "run: python check_setup.py --fix")
+    # Rubric v2 columns on the evaluators' table (block 10)
+    ratings = existing.get("human_ratings")
+    if ratings:
+        todo = [f"ADD COLUMN {c} TINYINT NULL" for c in ("directness", "specificity") if c not in ratings]
+        if ratings.get("clarity", ("YES", ""))[0] == "NO":
+            todo.append("MODIFY clarity TINYINT NULL")
+        if todo and FIX:
+            for change in todo:
+                cursor.execute(f"ALTER TABLE human_ratings {change}")
+            changed = True
+            ok("human_ratings: updated for rubric v2")
+        elif todo:
+            fail("human_ratings needs the rubric v2 columns (block 10)", "run: python check_setup.py --fix")
     if changed:
         conn.commit()
 

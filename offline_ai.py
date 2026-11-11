@@ -124,6 +124,15 @@ def ollama_json(prompt, validate=None, attempts=3, num_ctx=8192):
                 return result
             last_error = ValueError(f"Ollama reply was incomplete: {problem}")
             print(last_error, "- retrying...")
+        except urllib.error.HTTPError as e:
+            # Ollama is running but the model failed (often: not enough memory for a long request)
+            try:
+                detail = json.loads(e.read().decode()).get("error", "")
+            except Exception:
+                detail = ""
+            last_error = RuntimeError(f"Ollama returned an error ({e.code}): {detail or e.reason}")
+            print(last_error, "- retrying..." if attempt < attempts - 1 else "")
+            time.sleep(2)
         except (urllib.error.URLError, OSError) as e:
             raise RuntimeError(f"Ollama is not running at {host} ({e})")
         except (json.JSONDecodeError, KeyError) as e:

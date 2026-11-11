@@ -19,7 +19,7 @@
     <h2>Progress</h2>
     <div class="kv"><span>Interviews completed</span><span>{{ summary.done }} of {{ summary.total }} started</span></div>
     <div class="kv"><span>Average overall</span><span>{{ score(summary.overall) }}</span></div>
-    <div class="kv"><span>Response quality</span><span>{{ score(summary.quality) }}</span></div>
+    <div class="kv"><span>Answer effectiveness</span><span>{{ score(summary.quality) }}</span></div>
     <div class="kv"><span>Speech performance</span><span>{{ score(summary.speech) }}</span></div>
     <div class="kv"><span>Body language</span><span>{{ score(summary.behavior) }}</span></div>
   </div>
@@ -68,7 +68,7 @@
     <a class="btn btn-sm btn-outline" href="{{ url_for('admin_interviews_csv', user_id=user.user_id, names=1) }}">Download CSV</a></div>
   <div class="table-scroll">
   <table class="data-table">
-    <thead><tr><th>Started</th><th>Skill</th><th>Difficulty</th><th>Status</th><th class="num">Overall</th><th class="num">Answers</th><th class="num">Speech</th><th class="num">Body</th><th></th></tr></thead>
+    <thead><tr><th>Started</th><th>Skill</th><th>Difficulty</th><th>Status</th><th class="num">Overall</th><th class="num" title="Answer effectiveness">Answers</th><th class="num" title="Verbal delivery">Verbal</th><th class="num" title="Nonverbal delivery">Nonverbal</th><th></th></tr></thead>
     <tbody>
     {% for i in interviews %}
       <tr>

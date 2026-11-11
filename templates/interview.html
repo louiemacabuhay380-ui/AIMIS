@@ -7,7 +7,7 @@
 <div class="page-head iv-head">
   <div>
     <h1>{{ iv.category }} Interview</h1>
-    <p>{{ iv.difficulty }} · <span id="progressText">Question {{ current.question_order }} of {{ iv.number_of_questions }}</span></p>
+    <p>{% if iv.career_goal %}{{ iv.career_goal }} · {% endif %}{{ iv.difficulty }} · <span id="progressText">Question {{ current.main_number }} of {{ iv.number_of_questions }}{% if current.is_follow_up %} · follow-up{% endif %}</span></p>
   </div>
   {# The interviewer always reads questions out loud (the Voice mode switch was removed) #}
   <input type="checkbox" id="voiceMode" checked hidden>
@@ -15,15 +15,20 @@
 
 <div class="steps" id="steps" aria-hidden="true">
   {% for n in range(1, iv.number_of_questions + 1) %}
-    <span class="{% if n < current.question_order %}done{% elif n == current.question_order %}now{% endif %}"></span>
+    <span class="{% if n < current.main_number %}done{% elif n == current.main_number %}now{% endif %}"></span>
   {% endfor %}
 </div>
 
 <div class="iv-layout" id="interviewArea"
      data-interview-question-id="{{ current.interview_question_id }}"
      data-question="{{ current.question_text }}"
-     data-number="{{ current.question_order }}"
+     data-number="{{ current.main_number }}"
+     data-follow-up="{{ '1' if current.is_follow_up }}"
      data-total="{{ iv.number_of_questions }}"
+     data-career="{{ iv.career_goal or '' }}"
+     data-adaptive="{{ '1' if adaptive }}"
+     data-returning="{{ '1' if returning }}"
+     data-name="{{ first_name }}"
      data-category="{{ iv.category }}">
 
   <!-- ===== Left column: robot interviewer (top) and the user's camera (bottom) ===== -->
@@ -104,18 +109,18 @@
         <div class="ready-skill">
           <span class="ready-icon">{{ skill_icon(iv.category, 28) }}</span>
           <div>
-            <p class="ready-kicker">{{ iv.difficulty }} · {{ iv.category }}</p>
-            <h2 class="ready-title">{% if current.question_order == 1 %}Your interview is ready{% else %}Welcome back: question {{ current.question_order }} of {{ n }}{% endif %}</h2>
+            <p class="ready-kicker">{{ iv.difficulty }} · {{ iv.category }}{% if iv.career_goal %} · {{ iv.career_goal }}{% endif %}</p>
+            <h2 class="ready-title">{% if current.question_order == 1 %}Your interview is ready{% else %}Welcome back: question {{ current.main_number }} of {{ n }}{% endif %}</h2>
           </div>
         </div>
         <div class="ready-facts">
-          <span><b>{{ n }}</b> question{{ 's' if n != 1 }}</span>
+          <span><b>{{ n }}</b> question{{ 's' if n != 1 }}{% if adaptive %} <small>+ follow-ups</small>{% endif %}</span>
           <span><b>3 min</b> max per answer</span>
           <span><b>{{ n * 2 }}–{{ n * 3 }} min</b> in total</span>
         </div>
         <ol class="ready-steps">
-          <li><span class="ready-step-icon">{{ ui_icon("chat", 18) }}</span><b>AIMIS Bot asks</b><small>Each question is read out loud.</small></li>
-          <li><span class="ready-step-icon">{{ ui_icon("mic", 18) }}</span><b>You answer out loud</b><small>Recording starts by itself.</small></li>
+          <li><span class="ready-step-icon">{{ ui_icon("chat", 18) }}</span><b>AIMIS Bot asks</b><small>{% if adaptive and returning %}It asks questions based on your answers.{% elif adaptive %}It starts with your name, then asks based on your answers.{% else %}Each question is read out loud.{% endif %}</small></li>
+          <li><span class="ready-step-icon">{{ ui_icon("mic", 18) }}</span><b>You answer out loud</b><small>{% if adaptive %}It listens, replies, and may ask a follow-up.{% else %}Recording starts by itself.{% endif %}</small></li>
           <li><span class="ready-step-icon">{{ ui_icon("spark", 18) }}</span><b>Get your feedback</b><small>Scores and tips after the last answer.</small></li>
         </ol>
         <ul class="ready-tips">
@@ -499,11 +504,14 @@ const stepBars = document.querySelectorAll("#steps span");
 // The question currently being asked (updated as the session continues)
 let current = {
   id: Number(area.dataset.interviewQuestionId),
-  number: Number(area.dataset.number),
+  number: Number(area.dataset.number),        // main question number (follow-ups keep their question's number)
+  followUp: area.dataset.followUp === "1",
   text: area.dataset.question,
 };
 const total = Number(area.dataset.total);
-const resumed = current.number > 1;     // the user left and came back mid-interview
+const career = area.dataset.career;
+const adaptive = area.dataset.adaptive === "1";
+const resumed = current.number > 1 || current.followUp;     // the user left and came back mid-interview
 
 let micStream = null, recorder = null, chunks = [], timerId = null, seconds = 0;
 let state = "idle";   // idle | asking | recording | saving | error | finished
@@ -649,7 +657,7 @@ const REC_ERRORS = {
 };
 function showRecProblem(msg) {
   if (gotWords || !answerText) return;          // words are already showing: keep them
-  answerText.textContent = msg + " Your answer is still being recorded and will be transcribed after the interview.";
+  answerText.textContent = msg + " Your answer is still being recorded and will still be transcribed.";
 }
 
 function startTranscript() {
@@ -760,12 +768,12 @@ function setState(newState) {
   finishBtn.hidden = state !== "recording";
   retryBtn.hidden = state !== "error";
   area.classList.toggle("recording", state === "recording");
-  recLabel.textContent = { idle: "Ready", asking: "Asking", recording: "Rec", saving: "Saving",
+  recLabel.textContent = { idle: "Ready", asking: "Asking", recording: "Rec", saving: adaptive ? "Thinking" : "Saving",
                            error: "Paused", finished: "Done" }[state];
   setMood(MOOD_FOR_STATE[state] || "neutral");
 }
 function updateProgress() {
-  progressText.textContent = `Question ${current.number} of ${total}`;
+  progressText.textContent = `Question ${current.number} of ${total}` + (current.followUp ? " · follow-up" : "");
   stepBars.forEach((bar, i) => {
     bar.className = (i + 1 < current.number) ? "done" : (i + 1 === current.number ? "now" : "");
   });
@@ -819,8 +827,17 @@ startBtn.onclick = async () => {
   }
   document.getElementById("startHint").remove();
   let intro;
-  if (resumed) intro = `Welcome back! Let's continue with question ${current.number}.`;
-  else intro = `Hi, I'm AIMIS Bot. Welcome to your ${area.dataset.category} mock interview. I'll ask you ${total} question${total > 1 ? "s" : ""}. Let's begin.`;
+  if (resumed) intro = current.followUp ? "Welcome back! Let's continue where we stopped." : `Welcome back! Let's continue with question ${current.number}.`;
+  else if (adaptive && area.dataset.returning === "1")
+    intro = `Welcome back${area.dataset.name ? ", " + area.dataset.name : ""}! I'm AIMIS Bot, your interviewer again` +
+            (career ? ` for the ${career} role` : "") +
+            `. Today we'll talk about ${area.dataset.category.toLowerCase()}, and my questions will follow from your answers. Let's begin.`;
+  else if (adaptive) intro = `Hi, I'm AIMIS Bot, and I'll be your interviewer today` +
+               (career ? ` for the ${career} role` : "") +
+               `. This is a ${area.dataset.category} interview, and it's a conversation, so my questions will follow from your answers.`;
+  else intro = `Hi, I'm AIMIS Bot. Welcome to your ${area.dataset.category} mock interview` +
+               (career ? `, for your target job: ${career}` : "") +
+               `. I'll ask you ${total} question${total > 1 ? "s" : ""}. Let's begin.`;
   askQuestion(intro);
 };
 
@@ -829,7 +846,7 @@ function askQuestion(lead) {
   updateProgress();
   seconds = 0;
   timerEl.textContent = "00:00";
-  const label = `Interviewer · Question ${current.number} of ${total}`;
+  const label = current.followUp ? `Interviewer · Follow-up on question ${current.number}` : `Interviewer · Question ${current.number} of ${total}`;
   addBubble("ai", label, (lead ? `<p>${escapeHtml(lead)}</p>` : "") +
                          `<p class="bubble-question">${escapeHtml(current.text)}</p>`);
   if (canSpeak && voiceMode.checked) {
@@ -899,10 +916,21 @@ finishBtn.onclick = () => {
   stopRecordingParts();
   behaviorResult = window.behavior ? window.behavior.stop() : null;
   setState("saving");
-  setTip("Thanks! Saving your answer...", "good");
-  statusEl.textContent = "Saving your answer...";
+  setTip(adaptive ? "Thanks! Let me think about your answer..." : "Thanks! Saving your answer...", "good");
+  statusEl.textContent = adaptive ? "AIMIS Bot is listening to your answer. This takes a few seconds..." : "Saving your answer...";
   recorder.stop();
 };
+
+// "AIMIS Bot is thinking" bubble while the interviewer processes the answer
+let thinkingBubble = null;
+function showThinking() {
+  if (!adaptive || thinkingBubble) return;
+  thinkingBubble = addBubble("ai thinking", "Interviewer", `<p class="typing" aria-label="AIMIS Bot is thinking"><span></span><span></span><span></span></p>`);
+}
+function hideThinking() {
+  if (thinkingBubble) thinkingBubble.remove();
+  thinkingBubble = null;
+}
 
 async function onRecordingStopped() {
   if (discardTake) {                      // restart was pressed
@@ -926,6 +954,7 @@ async function onRecordingStopped() {
 
 async function upload() {
   setState("saving");
+  showThinking();
   const form = new FormData();
   form.append("interview_question_id", pendingUpload.id);
   form.append("audio", pendingUpload.wav, "answer.wav");
@@ -938,6 +967,7 @@ async function upload() {
   } catch (e) {
     data = { ok: false, error: "Upload failed. Check your connection." };
   }
+  hideThinking();
   if (!data.ok) {
     setState("error");
     setTip("I couldn't save that answer. Let's try again.", "warn");
@@ -947,21 +977,28 @@ async function upload() {
   pendingUpload = null;
   answerText = null;                      // the next answer gets its own bubble
 
+  const reply = (data.reply || "").trim();   // the interviewer's response to this answer (adaptive mode)
   if (data.done) {                        // 5. That was the last question
-    finishSession(data.next_url);
+    finishSession(data.next_url, reply);
     return;
   }
-  current = { id: data.next.interview_question_id, number: data.next.question_order, text: data.next.question_text };
-  askQuestion(current.number === total ? "Thank you. Here's your last question." : "Thank you. Here's the next question.");
+  current = { id: data.next.interview_question_id, number: data.next.main_number,
+              followUp: !!data.next.is_follow_up, text: data.next.question_text };
+  let lead;
+  const last = current.number === total;
+  if (current.followUp) lead = reply || "Let me ask you more about that.";
+  else if (adaptive) lead = (reply || "Thank you.") + (last ? " One last question." : "");
+  else lead = (reply ? reply + " " : "Thank you. ") + (last ? "Here's your last question." : "Here's the next question.");
+  askQuestion(lead);
 }
 retryBtn.onclick = () => { if (state === "error" && pendingUpload) upload(); };
 
-function finishSession(nextUrl) {
+function finishSession(nextUrl, reply) {
   stepBars.forEach(bar => bar.className = "done");
   setState("finished");
   if (micStream) micStream.getTracks().forEach(t => t.stop());
-  const bye = "That's the end of the interview. Thank you! I'll now prepare your results.";
-  addBubble("ai", "Interviewer", `<p>${bye}</p>`);
+  const bye = (reply ? reply + " " : "") + "That's the end of the interview. Thank you! I'll now prepare your results.";
+  addBubble("ai", "Interviewer", `<p>${escapeHtml(bye)}</p>`);
   setTip("Great job! Preparing your results...", "good");
   statusEl.textContent = "All answers saved. Preparing your results...";
   say(bye, () => { window.location.href = nextUrl; });

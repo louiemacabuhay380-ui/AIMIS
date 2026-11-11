@@ -38,19 +38,133 @@
     {% else %}
       <h1>Your Interview Report</h1>
     {% endif %}
-    <p>{{ iv.category }}, {{ iv.difficulty }}{% if iv.completed_at %}, {{ iv.completed_at.strftime('%b %d, %Y') }}{% endif %}</p>
+    <p>{{ iv.category }}, {{ iv.difficulty }}{% if iv.career_goal %} · for {{ iv.career_goal }}{% endif %}{% if iv.completed_at %}, {{ iv.completed_at.strftime('%b %d, %Y') }}{% endif %}</p>
   </div>
 </div>
 
-{# ---- Jump bar: go straight to a part of this long report ---- #}
-<nav class="report-jump" aria-label="Report sections">
-  {% if evaluation %}<a href="#sec-scores">Scores</a>{% endif %}
-  {% if fb %}<a href="#sec-feedback">Feedback</a>{% endif %}
-  <a href="#sec-answers">{{ 'Answers' if admin_view else 'Your answers' }} <span class="jump-count">{{ answers | length }}</span></a>
+{# ---- Tabs: the report is split into three screens, each a bento grid ---- #}
+<nav class="report-jump report-tabs" aria-label="Report sections">
+  <a href="#sec-scores" data-tab="scores">Scores</a>
+  {% if fb %}<a href="#sec-feedback" data-tab="feedback">Feedback</a>{% endif %}
+  <a href="#sec-answers" data-tab="answers">{{ 'Answers' if admin_view else 'Your answers' }} <span class="jump-count">{{ answers | length }}</span></a>
 </nav>
 
-<div class="bento bento-report" id="sec-scores">
-{% if evaluation %}
+<div class="bento bento-report report-panel" id="panel-scores" data-panel="scores">
+{% set v2 = evaluation and evaluation.rubric_version == rubric.version %}
+{% if v2 %}
+  {# ---------------- Rubric v2: two separate scores (scoring.py) ---------------- #}
+  {% set ow, dw = rubric.overall, rubric.delivery %}
+  {% set prof = rubric.profiles.get(evaluation.performance_profile) %}
+  <section class="tile tile-overall">
+    {{ robot("happy") }}
+    <span class="overall-num">{{ num(evaluation.overall_score) }}{% if evaluation.overall_score is number %}%{% endif %}</span>
+    <span class="overall-label">Interview readiness</span>
+    <span class="overall-note">{{ score_band(evaluation.overall_score) or "Not scored" }}</span>
+  </section>
+
+  {% for label, value, weight, desc in [
+       ("Answer Effectiveness", evaluation.response_quality_score, ow.answer, "What you said: direct, relevant, structured and specific. Would it work in a real interview?"),
+       ("Communication Delivery", evaluation.delivery_score, ow.delivery, "How you said it: your voice, language and body language.")] %}
+    <section class="tile tile-part">
+      <div class="part-head">
+        <span class="part-name">{{ label }}</span>
+        <span class="weight-chip">counts {{ weight }}%</span>
+      </div>
+      {% if value is number %}
+        <p class="part-value">{{ num(value) }}% <span class="band-tag lvl-{{ score_level(value) }}">{{ score_band(value) }}</span></p>
+        <div class="bar"><span style="{{ 'width: ' ~ value ~ '%' }}"></span></div>
+      {% else %}
+        <p class="part-value muted">–</p>
+      {% endif %}
+      <p class="score-desc">{{ desc }}</p>
+      {% if label == "Communication Delivery" %}
+        <p class="score-split">Verbal <b>{{ num(evaluation.speech_performance_score) }}{% if evaluation.speech_performance_score is number %}%{% endif %}</b>
+          · Nonverbal <b>{% if evaluation.behavioral_score is number %}{{ num(evaluation.behavioral_score) }}%{% else %}no camera{% endif %}</b></p>
+      {% endif %}
+    </section>
+  {% endfor %}
+
+  <section class="tile tile-part tile-profile profile-{{ evaluation.performance_profile or 'none' }}">
+    <span class="part-name">Your performance profile</span>
+    {% if prof %}
+      <p class="profile-title">{{ prof[0] }}</p>
+      <p class="score-desc">{{ prof[1] }}</p>
+    {% else %}
+      <p class="score-desc">Not enough data.</p>
+    {% endif %}
+    <p class="score-desc small">{{ rubric.pass_mark }}% or more counts as meeting the standard.</p>
+  </section>
+
+  <section class="tile tile-math">
+    {% if evaluation.overall_score is number %}
+      <div class="overall-math">
+        <span class="overall-math-label">How your Interview readiness of {{ num(evaluation.overall_score) }}% was calculated</span>
+        <div class="overall-math-row">
+          <span class="math-term"><span><b>{{ num(evaluation.response_quality_score) }}%</b> × {{ ow.answer }}%</span><small>Answer Effectiveness</small></span>
+          {% if evaluation.delivery_score is number %}
+            <span class="math-op">+</span>
+            <span class="math-term"><span><b>{{ num(evaluation.delivery_score) }}%</b> × {{ ow.delivery }}%</span><small>Communication Delivery</small></span>
+          {% endif %}
+          <span class="math-op">=</span>
+          <span class="math-term math-result"><b>{{ num(evaluation.overall_score) }}%</b><small>Readiness</small></span>
+        </div>
+        {% if evaluation.delivery_score is number %}
+          <div class="overall-math-row math-sub">
+            <span class="math-label">Communication Delivery:</span>
+            <span class="math-term"><span><b>{{ num(evaluation.speech_performance_score) }}%</b> × {{ dw.verbal }}%</span><small>Verbal</small></span>
+            {% if evaluation.behavioral_score is number %}
+              <span class="math-op">+</span>
+              <span class="math-term"><span><b>{{ num(evaluation.behavioral_score) }}%</b> × {{ dw.nonverbal }}%</span><small>Nonverbal</small></span>
+            {% endif %}
+            <span class="math-op">=</span>
+            <span class="math-term"><b>{{ num(evaluation.delivery_score) }}%</b><small>Delivery</small></span>
+          </div>
+        {% endif %}
+        {% if evaluation.behavioral_score is not number or evaluation.delivery_score is not number %}
+          <p class="small muted">Some parts had no data (for example, no camera), so the parts that were measured were rescaled to add up to 100%.</p>
+        {% endif %}
+      </div>
+    {% endif %}
+
+    {% set stt = answers | map(attribute="transcribed_by") | select | unique | list %}
+    {% if evaluation.scored_by or stt %}
+      <p class="ai-used small muted">
+        {% if evaluation.scored_by %}Scored by: <b>{{ AI_NAMES.get(evaluation.scored_by, evaluation.scored_by) }}</b>{% endif %}
+        {% if stt %}{{ ' · ' if evaluation.scored_by }}Speech-to-text: <b>{% for t in stt %}{{ AI_NAMES.get(t, t) }}{{ ', ' if not loop.last }}{% endfor %}</b>{% endif %}
+      </p>
+    {% endif %}
+
+    <details class="help rubric-help">
+      <summary>How each score is calculated (scoring rubric)</summary>
+      <p class="small">Every answer counts equally. Each criterion is scored 0–100 using five levels
+        (100, 75, 50, 25, 0). The AI and the human evaluators use the same level descriptions.</p>
+      <h4>Answer Effectiveness ({{ ow.answer }}% of readiness): what you said</h4>
+      <table class="rubric-table">
+        <thead><tr><th>Criterion</th><th>Weight</th><th>What it checks</th><th>Top level (100)</th></tr></thead>
+        <tbody>
+        {% for c in rubric.answer_criteria %}
+          <tr><td>{{ c.label }}</td><td>{{ c.weight }}%</td><td>{{ c.question }}</td><td>{{ c.levels[-1] }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <h4>Communication Delivery ({{ ow.delivery }}% of readiness): how you said it</h4>
+      <table class="rubric-table">
+        <thead><tr><th>Part</th><th>Criterion</th><th>Weight</th><th>How it is measured</th></tr></thead>
+        <tbody>
+        {% for c in rubric.verbal %}
+          <tr><td>{% if loop.first %}Verbal ({{ rubric.delivery.verbal }}%){% endif %}</td><td>{{ c.label }}</td><td>{{ c.weight }}%</td><td>{{ c.how }}</td></tr>
+        {% endfor %}
+        {% for c in rubric.nonverbal %}
+          <tr><td>{% if loop.first %}Nonverbal ({{ rubric.delivery.nonverbal }}%){% endif %}</td><td>{{ c.label }}</td><td>{{ c.weight }}%</td><td>{{ c.how }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      <p class="small muted">Weights inside Verbal and Nonverbal are shares of that part. Score levels:
+        {{ rubric.band_ranges | join(", ") }}. {{ rubric.pass_mark }} or more meets the standard.</p>
+    </details>
+  </section>
+{% elif evaluation %}
+  {# ---------------- Older interviews (scored before rubric v2) ---------------- #}
   {# Each part: its score, and how much it counts toward the Overall score #}
   {% set bars = [("Response Quality", evaluation.response_quality_score, 60, "How good your answers were"),
                  ("Speech Performance", evaluation.speech_performance_score, 25, "How you spoke"),
@@ -122,6 +236,15 @@
       </ul>
     </details>
   </section>
+  {% if not admin_view and iv.status == 'completed' %}
+    <section class="tile tile-full notice">
+      <p class="muted small" style="margin:0 0 10px">This interview was scored with the earlier rubric. Re-score it to see
+        the two new scores (Answer Effectiveness and Communication Delivery). Your answers are not recorded again.</p>
+      <form method="POST" action="{{ url_for('retry_evaluation', interview_id=iv.interview_id) }}">
+        <button type="submit" class="btn btn-outline">Re-score with the new rubric</button>
+      </form>
+    </section>
+  {% endif %}
 {% elif iv.status == 'completed' and not admin_view %}
   <section class="tile tile-full notice">
     <h2>This interview hasn't been scored yet</h2>
@@ -139,9 +262,27 @@
 {% set watched = answers | selectattr("eye_contact_score", "number") | list %}
 {% set scored  = answers | selectattr("relevance_score", "number") | list %}
 
+<div class="detail-row">
+{% if scored %}
+<section class="tile tile-quarter">
+  {% if v2 %}
+    <h2>Answer Effectiveness</h2>
+    {% for c in rubric.answer_criteria %}
+      <div class="kv"><span>{{ c.label }}</span>{{ score(scored, c.key ~ "_score") }}</div>
+    {% endfor %}
+  {% else %}
+    <h2>Answer Analysis</h2>
+    {% for label, key in [("Relevance", "relevance_score"), ("Answer clarity", "clarity_score"),
+                          ("Completeness", "completeness_score"), ("Grammar", "grammar_score")] %}
+      <div class="kv"><span>{{ label }}</span>{{ score(scored, key) }}</div>
+    {% endfor %}
+  {% endif %}
+</section>
+{% endif %}
+
 {% if spoken or watched %}
-  <section class="tile tile-half">
-    <h2>Speech Analysis</h2>
+  <section class="tile tile-quarter">
+    <h2>{{ 'Verbal delivery' if v2 else 'Speech Analysis' }}</h2>
     {% if spoken %}
       <div class="kv"><span>Speaking pace</span><span>{{ avg(spoken, "speaking_rate") }} WPM</span></div>
       <div class="kv"><span>Filler words</span><span>{{ total(spoken, "filler_word_count") }}</span></div>
@@ -156,11 +297,15 @@
       <div class="kv"><span>Tone (pitch variation)</span><span>{% set t = avg(voiced, "pitch_variation", "%.1f") %}{{ t }}{% if t | trim != "–" %} semitones{% endif %}</span></div>
       <div class="kv"><span>Speaking time</span><span>{% set t = avg(voiced, "speech_ratio") %}{{ t }}{% if t | trim != "–" %}%{% endif %}</span></div>
     {% endif %}
+    {% if v2 %}
+      {% set graded = answers | selectattr("grammar_score", "number") | list %}
+      {% if graded %}<div class="kv"><span>Grammar</span>{{ score(graded, "grammar_score") }}</div>{% endif %}
+    {% endif %}
     {% if not spoken and not voiced %}<p class="muted">No speech data yet.</p>{% endif %}
   </section>
 
-  <section class="tile tile-half">
-    <h2>Behavioral Analysis</h2>
+  <section class="tile tile-quarter">
+    <h2>{{ 'Nonverbal delivery' if v2 else 'Behavioral Analysis' }}</h2>
     {% if watched %}
       <div class="kv"><span>Eye contact</span>{{ score(watched, "eye_contact_score") }}</div>
       <div class="kv"><span>Face visibility</span>{{ score(watched, "face_visibility_score") }}</div>
@@ -179,29 +324,24 @@
   </section>
 {% endif %}
 
-{% if scored %}
-<section class="tile tile-third">
-  <h2>Answer Analysis</h2>
-  {% for label, key in [("Relevance", "relevance_score"), ("Answer clarity", "clarity_score"),
-                        ("Completeness", "completeness_score"), ("Grammar", "grammar_score")] %}
-    <div class="kv"><span>{{ label }}</span>{{ score(scored, key) }}</div>
+{# ---- This interview next to the student's earlier ones ---- #}
+{% if progress %}
+<section class="tile tile-quarter">
+  <h2>Compared with before</h2>
+  <p class="muted small">{{ 'Their' if admin_view else 'Your' }} average in the {{ progress.count }} interview{{ 's' if progress.count != 1 }} before this one.</p>
+  {% for r in progress.rows %}
+    <div class="kv progress-row">
+      <span>{{ r.label }}</span>
+      <span><span class="muted small">{{ r.before }}% → </span>{{ r.now }}%
+        <span class="delta {{ 'up' if r.diff > 0 else 'down' if r.diff < 0 else 'same' }}">{{ '+' if r.diff > 0 }}{{ r.diff }}</span></span>
+    </div>
   {% endfor %}
-
-  {# ---- This interview next to the student's earlier ones ---- #}
-  {% if progress %}
-    <h2 class="progress-title">Compared with {{ 'earlier' if admin_view else 'your earlier' }} interviews</h2>
-    <p class="muted small">Your average in the {{ progress.count }} interview{{ 's' if progress.count != 1 }} before this one.</p>
-    {% for r in progress.rows %}
-      <div class="kv progress-row">
-        <span>{{ r.label }}</span>
-        <span><span class="muted small">{{ r.before }}% → </span>{{ r.now }}%
-          <span class="delta {{ 'up' if r.diff > 0 else 'down' if r.diff < 0 else 'same' }}">{{ '+' if r.diff > 0 }}{{ r.diff }}</span></span>
-      </div>
-    {% endfor %}
-  {% endif %}
 </section>
 {% endif %}
+</div>
+</div>
 
+<div class="bento bento-report report-panel" data-panel="feedback">
 {# ---- AI feedback ---- #}
 {# One feedback card: which answer, what was good or weak, their words, the fix, and an example #}
 {% macro fb_card(i, title=none) %}
@@ -217,7 +357,7 @@
 
 {% if fb %}
 {% set items = fb.feedback_items or [] %}
-<section class="tile {{ 'tile-wide' if scored else 'tile-full' }}" id="sec-feedback">
+<section class="tile tile-full" id="panel-feedback">
   <div class="fb-head">
     {{ robot("happy", "robot-sm", defs=not evaluation) }}
     <div><h2>Feedback from {{ 'the' if admin_view else 'your' }} interviewer</h2>
@@ -262,24 +402,45 @@
 </section>
 {% endif %}
 
-{# ---- Each question and answer ---- #}
-<section class="tile tile-full" id="sec-answers">
-  <div class="answers-head">
-    <h2>{{ 'Answers' if admin_view else 'Your Answers' }}</h2>
-    {% if answers | length > 1 %}
-      <button type="button" class="btn btn-sm btn-outline" id="toggleAnswers">Open all</button>
-    {% endif %}
-  </div>
-  <p class="muted small">{% if admin_view %}Transcripts and recordings are private to the student. Only scores are shown.{% else %}Click a question to open or close it. The percentage is the answer's average AI rating.{% endif %}</p>
+{# ---- Each question and answer: a list of questions, and one answer shown at a time ---- #}
+</div>
+
+<div class="bento bento-report report-panel answers-panel" data-panel="answers">
+<section class="tile answer-list-tile">
+  <h2>{{ 'Answers' if admin_view else 'Your answers' }}</h2>
+  <p class="muted small">{% if admin_view %}Transcripts and recordings are private to the student.{% else %}Pick a question to see your answer and feedback.{% endif %}</p>
+  <nav class="answer-nav" aria-label="Questions">
+    {% for a in answers %}
+      {% set weak = a.skills | selectattr("rating", "equalto", "weak") | list %}
+      <a href="#q{{ a.question_order }}" class="answer-link" data-q="q{{ a.question_order }}">
+        <span class="an-top">
+          <b>Q{{ a.question_order }}</b>
+          {% if a.parent_iq_id %}<span class="followup-tag">Follow-up</span>{% elif a.question_source == 'opener' %}<span class="followup-tag">Introduction</span>{% endif %}
+          {% if weak %}<span class="an-weak" title="Weak sub-skills">{{ weak | length }} weak</span>{% endif %}
+        </span>
+        <span class="an-text">{% if admin_view and (a.parent_iq_id or a.question_source == 'live') %}Written live (hidden){% else %}{{ a.question_text | truncate(70) }}{% endif %}</span>
+        {% if a.answer_score is number %}
+          <span class="an-scores">Answer <b class="lvl-{{ score_level(a.answer_score) }}">{{ "%.0f" | format(a.answer_score) }}%</b>{% if a.delivery_score is number %} · Delivery <b class="lvl-{{ score_level(a.delivery_score) }}">{{ "%.0f" | format(a.delivery_score) }}%</b>{% endif %}</span>
+        {% endif %}
+      </a>
+    {% endfor %}
+  </nav>
+</section>
+
+<section class="tile answer-detail-tile" id="panel-answers">
   {% for a in answers %}
     {% set parts = [a.relevance_score, a.clarity_score, a.completeness_score, a.grammar_score] | select("number") | list %}
-    <details class="answer" id="q{{ a.question_order }}"{{ ' open' if loop.first }}>
-      <summary class="answer-head">
-        <h3>Q{{ a.question_order }}. {{ a.question_text }}</h3>
+    <article class="answer-pane" id="pane-q{{ a.question_order }}" data-q="q{{ a.question_order }}">
+      <header class="answer-head pane-head">
+        <h3>Q{{ a.question_order }}.{% if a.parent_iq_id %} <span class="followup-tag">Follow-up on Q{{ a.parent_order }}</span>{% elif a.question_source == 'opener' %} <span class="followup-tag">Introduction</span>{% endif %}
+          {% if admin_view and (a.parent_iq_id or a.question_source == 'live') %}<span class="muted">(written live from the student's answers: hidden for privacy)</span>{% else %}{{ a.question_text }}{% endif %}</h3>
         {% set weak = a.skills | selectattr("rating", "equalto", "weak") | list %}
         {% if weak %}<span class="weak-count">{{ weak | length }} weak skill{{ 's' if weak | length > 1 }}</span>{% endif %}
-        {% if parts %}<span class="answer-score">{{ "%.0f" | format((parts | sum) / (parts | length)) }}%</span>{% endif %}
-      </summary>
+        {% if a.answer_score is number %}
+          <span class="answer-score" title="Answer Effectiveness">Answer {{ "%.0f" | format(a.answer_score) }}%</span>
+          {% if a.delivery_score is number %}<span class="answer-score answer-score-2" title="Communication Delivery">Delivery {{ "%.0f" | format(a.delivery_score) }}%</span>{% endif %}
+        {% elif parts %}<span class="answer-score">{{ "%.0f" | format((parts | sum) / (parts | length)) }}%</span>{% endif %}
+      </header>
       {% if not admin_view %}<p class="transcript">{{ a.transcript or "(no answer)" }}</p>{% endif %}
 
       {# ---- Personal feedback on this exact answer ---- #}
@@ -321,8 +482,13 @@
         <audio controls preload="none" src="{{ url_for('audio_file', filename=a.audio_path.split('/')[-1]) }}"></audio>
       {% endif %}
 
+      <details class="measures">
+      <summary>All measurements for this answer</summary>
       <div class="chips">
-        {% if a.relevance_score is number %}
+        {% if a.directness_score is number %}
+          {% for c in rubric.answer_criteria %}<span>{{ c.label }} <b>{{ num(a[c.key ~ "_score"]) }}</b></span>{% endfor %}
+          <span>Grammar <b>{{ num(a.grammar_score) }}</b></span>
+        {% elif a.relevance_score is number %}
           <span>Relevance <b>{{ num(a.relevance_score) }}</b></span>
           <span>Answer clarity <b>{{ num(a.clarity_score) }}</b></span>
           <span>Completeness <b>{{ num(a.completeness_score) }}</b></span>
@@ -360,7 +526,11 @@
           <span>Keywords <b>{{ a.keywords_found or "none" }}</b></span>
         {% endif %}
       </div>
-    </details>
+      </details>
+      {% if not loop.last %}
+        <a class="btn btn-sm btn-outline next-answer" href="#q{{ answers[loop.index].question_order }}">Next question →</a>
+      {% endif %}
+    </article>
   {% endfor %}
 </section>
 </div>
@@ -381,41 +551,37 @@
 </button>
 
 <script>
-  // Open the answer named in the link (e.g. #q2 from the chatbot) and scroll to it
-  function openAnswerFromHash() {
-    const el = location.hash && document.getElementById(location.hash.slice(1));
-    if (!el || el.tagName !== "DETAILS") return;
-    el.open = true;
-    el.classList.remove("answer-flash"); void el.offsetWidth; el.classList.add("answer-flash");
-    el.scrollIntoView({behavior: "smooth", block: "start"});
-  }
-  window.addEventListener("hashchange", openAnswerFromHash);
-  openAnswerFromHash();
-
-  // Open all / Close all answers
+  // Tabs (Scores / Feedback / Answers) and the answer list: one screen at a time instead of one long page.
+  // Links like #q2 (from feedback cards or the chatbot) open the Answers tab on that answer.
   (function () {
-    const btn = document.getElementById("toggleAnswers");
-    if (!btn) return;
-    const all = () => document.querySelectorAll("#sec-answers details.answer");
-    function label() { btn.textContent = [...all()].every(d => d.open) ? "Close all" : "Open all"; }
-    btn.addEventListener("click", () => { const open = btn.textContent === "Open all"; all().forEach(d => d.open = open); label(); });
-    all().forEach(d => d.addEventListener("toggle", label));
-    label();
-  })();
+    const panels = [...document.querySelectorAll(".report-panel")];
+    const tabs = [...document.querySelectorAll(".report-tabs a")];
+    const panes = [...document.querySelectorAll(".answer-pane")];
+    const links = [...document.querySelectorAll(".answer-link")];
+    if (!panels.length) return;
+    document.body.classList.add("report-tabbed");
 
-  // Highlight the part of the report you are reading in the jump bar
-  (function () {
-    const links = [...document.querySelectorAll(".report-jump a")];
-    const parts = links.map(l => document.querySelector(l.getAttribute("href"))).filter(Boolean);
-    if (!("IntersectionObserver" in window) || !parts.length) return;
-    const seen = new Map();
-    const io = new IntersectionObserver(entries => {
-      entries.forEach(e => seen.set(e.target.id, e.isIntersecting ? e.intersectionRatio : 0));
-      let best = null, ratio = 0;
-      seen.forEach((r, id) => { if (r > ratio) { ratio = r; best = id; } });
-      links.forEach(l => l.classList.toggle("on", best && l.getAttribute("href") === "#" + best));
-    }, {threshold: [0, 0.15, 0.4, 0.7]});
-    parts.forEach(p => io.observe(p));
+    function showPanel(name) {
+      if (!panels.some(p => p.dataset.panel === name)) name = panels[0].dataset.panel;
+      panels.forEach(p => p.hidden = p.dataset.panel !== name);
+      tabs.forEach(t => { const on = t.dataset.tab === name; t.classList.toggle("on", on); t.setAttribute("aria-current", on ? "page" : "false"); });
+    }
+    function showAnswer(id) {
+      if (!panes.some(p => p.dataset.q === id) && panes.length) id = panes[0].dataset.q;
+      panes.forEach(p => p.hidden = p.dataset.q !== id);
+      links.forEach(l => l.classList.toggle("on", l.dataset.q === id));
+    }
+    function fromHash(scroll) {
+      const h = location.hash.slice(1);
+      if (/^q\d+$/.test(h)) { showPanel("answers"); showAnswer(h); }
+      else if (h === "sec-feedback") showPanel("feedback");
+      else if (h === "sec-answers") { showPanel("answers"); }
+      else showPanel("scores");
+      if (scroll) document.querySelector(".report-tabs").scrollIntoView({ block: "start", behavior: "smooth" });
+    }
+    showAnswer(panes.length ? panes[0].dataset.q : null);
+    fromHash(false);
+    window.addEventListener("hashchange", () => fromHash(true));
   })();
 
   // Back to top button appears after scrolling down

@@ -43,11 +43,22 @@ def delete_user_data(conn, root_path, user_id, delete_account=False):
     cursor = conn.cursor()
     cursor.execute("SELECT interview_id FROM interviews WHERE user_id = %s", (user_id,))
     interview_ids = [r[0] for r in cursor.fetchall()]
-    question_ids, response_ids, audio_files = [], [], []
+    question_ids, response_ids, audio_files, own_questions = [], [], [], []
     if interview_ids:
-        cursor.execute(f"SELECT interview_question_id FROM interview_questions WHERE interview_id IN ({_in(interview_ids)})",
+        cursor.execute(f"SELECT interview_question_id, question_id FROM interview_questions WHERE interview_id IN ({_in(interview_ids)})",
                        interview_ids)
-        question_ids = [r[0] for r in cursor.fetchall()]
+        rows = cursor.fetchall()
+        question_ids = [r[0] for r in rows]
+        # Questions written only for this student (live questions and follow-ups about their answers)
+        bank_ids = list({r[1] for r in rows})
+        if bank_ids:
+            try:
+                cursor.execute(f"SELECT question_id FROM question_bank WHERE question_id IN ({_in(bank_ids)}) "
+                               "AND review_status IN ('live', 'followup')", bank_ids)
+                own_questions = [r[0] for r in cursor.fetchall()]
+            except Exception as e:
+                if getattr(e, "errno", None) != 1054:
+                    raise
     if question_ids:
         cursor.execute(f"SELECT response_id, audio_path FROM responses WHERE interview_question_id IN ({_in(question_ids)})",
                        question_ids)
@@ -63,6 +74,7 @@ def delete_user_data(conn, root_path, user_id, delete_account=False):
             _delete(cursor, table, "response_id", response_ids)
         _delete(cursor, "responses", "response_id", response_ids)
         _delete(cursor, "interview_questions", "interview_question_id", question_ids)
+        _delete(cursor, "question_bank", "question_id", own_questions)
         for table in ("evaluations", "feedback", "feedback_items", "rag_chunks", "consents"):
             _delete(cursor, table, "interview_id", interview_ids)
         for table in ("rag_chunks", "chat_messages", "consents"):

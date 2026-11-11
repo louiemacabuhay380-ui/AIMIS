@@ -1,7 +1,7 @@
 """Validation: do the AI's answer scores agree with human experts?
 
 Raters (teachers, HR practitioners) get accounts with role 'rater'. They score anonymous answers on the
-same four criteria as the AI (relevance, clarity, completeness, grammar) with a 1-5 rubric, without seeing
+same criteria as the AI (relevance, directness, structure, specific evidence, grammar) with a 1-5 rubric, without seeing
 the AI's scores (blind rating). The admin's Validation tab compares them:
   - Pearson correlation (r) between AI and human scores, per criterion
   - Mean absolute difference (in points out of 100) and the share of answers within one rubric step
@@ -18,19 +18,11 @@ from functools import wraps
 
 from flask import render_template, request, redirect, url_for, flash, session, Response
 
-CRITERIA = [
-    ("relevance", "Relevance", "Does the answer actually address the question?",
-     ["Off-topic or no real answer", "Mostly off-topic", "Partly answers the question",
-      "Answers the question", "Fully and directly answers the question"]),
-    ("clarity", "Clarity", "Is it clear, organized, and easy to follow?",
-     ["Very hard to follow", "Often unclear or jumps around", "Understandable but loosely organized",
-      "Clear and mostly organized", "Very clear, well organized"]),
-    ("completeness", "Completeness", "Does it fully answer? (situation, action and result for experience questions)",
-     ["Almost nothing", "Very incomplete", "Some key parts missing", "Mostly complete", "Complete and specific"]),
-    ("grammar", "Grammar", "Spoken grammar and sentence structure (ignore fillers like um/uh and punctuation)",
-     ["Many errors, hard to understand", "Frequent errors", "Some errors, still understandable",
-      "Few errors", "Correct and natural"]),
-]
+import scoring
+
+# Same criteria and level descriptions as the AI (scoring.py, rubric v2): the four Answer Effectiveness
+# criteria (relevance, directness, structure, specific evidence) plus grammar.
+CRITERIA = scoring.rater_criteria()
 KEYS = [c[0] for c in CRITERIA]
 RESEARCH_CONSENT_VERSIONS = ("v1.3",)     # consent versions that allow review by evaluators
 DEMO_EMAIL = "demo@aimis.local"
@@ -104,7 +96,7 @@ def register(app, get_db):
                 if not all(1 <= v <= 5 for v in values):
                     raise ValueError
             except (KeyError, ValueError):
-                flash("Choose a score from 1 to 5 for all four criteria.")
+                flash(f"Choose a score from 1 to 5 for all {len(KEYS)} criteria.")
                 conn.close()
                 return redirect(url_for("rate_answers", r=request.form.get("response_id")))
             base, params = eligible_sql()
@@ -114,9 +106,8 @@ def register(app, get_db):
                 flash("That answer can't be rated.")
                 return redirect(url_for("rate_answers"))
             cursor.execute("DELETE FROM human_ratings WHERE response_id = %s AND rater_id = %s", (response_id, rater))
-            cursor.execute("""INSERT INTO human_ratings (response_id, rater_id, relevance, clarity, completeness,
-                                                         grammar, comment)
-                              VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            cursor.execute(f"""INSERT INTO human_ratings (response_id, rater_id, {", ".join(KEYS)}, comment)
+                               VALUES (%s, %s, {", ".join(["%s"] * len(KEYS))}, %s)""",
                            (response_id, rater, *values, (request.form.get("comment") or "").strip()[:500] or None))
             conn.commit()
             flash("Saved. Here is the next answer.")
@@ -157,8 +148,8 @@ def register(app, get_db):
     def collect(cursor, ai=None):
         """AI vs human scores per answer (human = average of all raters), plus rater-vs-rater pairs.
         ai: only answers scored by this AI ('gemini' / 'ollama'), or None for all."""
-        sql = """SELECT h.response_id, h.rater_id, h.relevance, h.clarity, h.completeness, h.grammar,
-                        n.relevance_score, n.clarity_score, n.completeness_score, n.grammar_score,
+        sql = f"""SELECT h.response_id, h.rater_id, {", ".join("h." + k for k in KEYS)},
+                        {", ".join(f"n.{k}_score" for k in KEYS)},
                         i.category, COALESCE(e.scored_by, 'gemini') AS scored_by
                  FROM human_ratings h
                  JOIN nlp_analysis n ON n.response_id = h.response_id
@@ -180,20 +171,26 @@ def register(app, get_db):
                                                         "ai": {}, "raters": {}})
             for k in KEYS:
                 a["ai"][k] = float(row[f"{k}_score"]) if row[f"{k}_score"] is not None else None
-            a["raters"][row["rater_id"]] = {k: int(row[k]) for k in KEYS}
+            a["raters"][row["rater_id"]] = {k: int(row[k]) if row[k] is not None else None for k in KEYS}
         return answers
 
     def statistics(answers):
         results = []
-        for key, label, _, _ in CRITERIA + [("overall", "Average of the four", "", [])]:
+        answer_keys = [c["key"] for c in scoring.ANSWER_CRITERIA]
+        for key, label, _, _ in CRITERIA + [("overall", "Answer effectiveness (weighted, as in the report)", "", [])]:
             ai, human = [], []
             for a in answers.values():
-                keys = KEYS if key == "overall" else [key]
-                if any(a["ai"].get(k) is None for k in keys):
-                    continue
-                ai.append(sum(a["ai"][k] for k in keys) / len(keys))
-                human.append(sum(to_points(sum(r[k] for r in a["raters"].values()) / len(a["raters"]))
-                                 for k in keys) / len(keys))
+                keys = answer_keys if key == "overall" else [key]
+                given = {k: [r[k] for r in a["raters"].values() if r.get(k) is not None] for k in keys}
+                if any(a["ai"].get(k) is None or not given[k] for k in keys):
+                    continue      # e.g. rated with the older rubric that had no directness / specificity
+                if key == "overall":
+                    ai.append(scoring.answer_score({f"{k}_score": a["ai"][k] for k in keys}))
+                    human.append(scoring.answer_score({f"{k}_score": to_points(sum(given[k]) / len(given[k]))
+                                                       for k in keys}))
+                else:
+                    ai.append(a["ai"][key])
+                    human.append(to_points(sum(given[key]) / len(given[key])))
             n = len(ai)
             r = pearson(ai, human)
             diffs = [abs(x - y) for x, y in zip(ai, human)]
@@ -209,7 +206,7 @@ def register(app, get_db):
         for key, label, _, _ in CRITERIA:
             pairs = []
             for a in multi:
-                vals = [r[key] for r in a["raters"].values()]
+                vals = [r[key] for r in a["raters"].values() if r.get(key) is not None]
                 pairs += [(x, y) for i, x in enumerate(vals) for y in vals[i + 1:]]
             if pairs:
                 inter.append({"label": label, "pairs": len(pairs),
@@ -281,7 +278,8 @@ def register(app, get_db):
         for n, (response_id, a) in enumerate(sorted(answers.items()), start=1):
             for rater_no, (rater_id, r) in enumerate(sorted(a["raters"].items()), start=1):
                 writer.writerow([f"A{n}", a["category"], a["scored_by"], f"R{rater_id}"] +
-                                [a["ai"][k] for k in KEYS] + [r[k] for k in KEYS] + [to_points(r[k]) for k in KEYS])
+                                [a["ai"][k] for k in KEYS] + [r[k] for k in KEYS] +
+                                [to_points(r[k]) if r[k] is not None else None for k in KEYS])
         return Response("﻿" + out.getvalue(), mimetype="text/csv",
                         headers={"Content-Disposition": "attachment; filename=aimis_validation.csv"})
 

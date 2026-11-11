@@ -2125,3 +2125,109 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .pick input:f
 .q-side > .card:last-child { flex: 1; display: flex; flex-direction: column; }
 .q-side > .card:last-child > .btn { margin-top: auto; }
 @media (max-width: 900px) { .q-side > .card:last-child { flex: none; } }
+
+/* ================================================================
+   Panel revisions: career goal, live interviewer, two-score report
+   ================================================================ */
+
+/* Career goal page and banner */
+.career-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
+.career-card { gap: 4px; }
+.career-desc { font-size: 13px; color: var(--muted); line-height: 1.35; }
+.career-banner {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+  padding: 12px 16px; margin-bottom: 18px;
+}
+.career-banner-label { font-size: 12.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.career-banner-job { font-size: 17px; }
+.career-banner .btn { margin-left: auto; }
+.room-career { margin: -6px 0 16px; font-size: 14px; color: rgba(255, 255, 255, 0.85); }
+.room-career a { color: inherit; font-weight: 700; }
+[data-theme="light"] .room-career { color: var(--muted); }
+[data-theme="light"] .room-career a { color: var(--link); }
+
+/* Live interviewer: "thinking" dots while it listens to the answer */
+.bubble.thinking { padding: 10px 16px; }
+.typing { display: inline-flex; gap: 5px; align-items: center; height: 18px; margin: 0; }
+.typing span {
+  width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: 0.4;
+  animation: typing-dot 1.2s infinite ease-in-out;
+}
+.typing span:nth-child(2) { animation-delay: 0.15s; }
+.typing span:nth-child(3) { animation-delay: 0.3s; }
+@keyframes typing-dot { 0%, 80%, 100% { opacity: 0.3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .typing span { animation: none; opacity: 0.7; } }
+.followup-tag {
+  display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+  background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); vertical-align: 2px;
+}
+
+/* Report: two scores, profile and rubric */
+.band-tag { font-size: 13px; font-weight: 700; letter-spacing: 0; vertical-align: 8px; margin-left: 4px; }
+.score-split { font-size: 13.5px; margin: 8px 0 0; color: var(--muted); }
+.score-split b { color: var(--text); }
+.tile-profile { border-left: 4px solid var(--border); }
+.tile-profile.profile-ready { border-left-color: var(--good); }
+.tile-profile.profile-content, .tile-profile.profile-delivery { border-left-color: var(--warn); }
+.tile-profile.profile-practice { border-left-color: var(--danger); }
+.profile-title { font-size: 19px; font-weight: 800; line-height: 1.3; margin: 8px 0 6px; }
+.math-sub { margin-top: 10px; padding-top: 10px; border-top: 1px dashed color-mix(in srgb, var(--primary) 30%, transparent); }
+.math-label { font-size: 13px; font-weight: 700; color: var(--muted); }
+.answer-score-2 { color: var(--text); background: var(--surface-2); margin-left: 6px; }
+.rubric-help h4 { margin: 14px 0 6px; font-size: 14.5px; }
+.rubric-table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.rubric-table th, .rubric-table td { text-align: left; vertical-align: top; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.rubric-table th { font-size: 12.5px; color: var(--muted); font-weight: 700; }
+.rubric-table td:nth-child(2) { white-space: nowrap; }
+@media (max-width: 760px) {
+  .rubric-table { display: block; overflow-x: auto; }
+  .career-banner .btn { margin-left: 0; }
+}
+
+/* ---------- Interview report: tabs, bento panels, one answer at a time ---------- */
+.report-panel[hidden], .answer-pane[hidden] { display: none !important; }
+.report-panel + .report-panel { margin-top: 16px; }
+.report-tabbed .report-panel + .report-panel { margin-top: 0; }
+.bento-report .tile-quarter { grid-column: span 1; align-content: start; }
+.bento-report .tile-quarter h2 { font-size: 17px; margin-bottom: 8px; }
+.bento-report .tile-quarter .kv { font-size: 14.5px; }
+
+.answers-panel { align-items: start; }
+.answers-panel .answer-list-tile { grid-column: span 1; position: sticky; top: 130px; }
+.answers-panel .answer-detail-tile { grid-column: span 3; min-height: 420px; }
+.answer-list-tile h2 { margin-bottom: 4px; }
+.answer-nav { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; max-height: calc(100vh - 260px); overflow-y: auto; }
+.answer-link {
+  display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: 12px;
+  border: 2px solid var(--border); background: var(--surface); color: var(--text); text-decoration: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.answer-link:hover { border-color: color-mix(in srgb, var(--primary) 50%, var(--border)); }
+.answer-link.on { border-color: var(--primary); background: var(--primary-soft); }
+.an-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 14px; }
+.an-weak { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--danger); }
+.an-text { font-size: 13.5px; line-height: 1.35; color: var(--muted); }
+.answer-link.on .an-text { color: var(--text); }
+.an-scores { font-size: 12.5px; color: var(--muted); }
+.an-scores b { font-weight: 800; }
+.pane-head { cursor: default; flex-wrap: wrap; gap: 8px; padding: 0 0 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border); }
+.pane-head::before { content: none !important; }
+.pane-head h3 { font-size: 17px; line-height: 1.4; flex-basis: 100%; }
+.answer-pane .transcript { margin-top: 0; }
+.measures { margin-top: 12px; }
+.measures > summary { cursor: pointer; font-weight: 700; font-size: 14px; color: var(--muted); }
+.measures[open] > summary { margin-bottom: 4px; }
+.next-answer { margin-top: 14px; }
+
+@media (max-width: 1100px) {
+  .answers-panel .answer-list-tile, .answers-panel .answer-detail-tile { grid-column: 1 / -1; position: static; }
+  .answer-nav { flex-direction: row; overflow-x: auto; max-height: none; padding-bottom: 4px; }
+  .answer-link { min-width: 220px; }
+}
+@media (max-width: 700px) {
+  .bento-report .tile-quarter { grid-column: 1 / -1; }
+}
+.bento-report .detail-row { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px; }
+.bento-report .detail-row > .tile { grid-column: auto !important; }
+.pane-head { justify-content: flex-start; }
+.pane-head .answer-score-2 { margin-left: 0; }

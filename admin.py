@@ -15,6 +15,7 @@ from datetime import date, timedelta
 from functools import wraps
 
 import personal_feedback
+import careers
 
 from flask import render_template, request, redirect, url_for, flash, session, Response
 from werkzeug.security import generate_password_hash
@@ -152,7 +153,7 @@ def register(app, get_db, load_report, generate_questions):
         weak = []
         if scored:
             weak = [
-                ("Answer quality below 60", int(w["quality"] or 0), scored),
+                ("Answer effectiveness below 60", int(w["quality"] or 0), scored),
                 ("Speech delivery below 60", int(w["speech"] or 0), scored),
                 ("Body language below 60", int(w["behavior"] or 0), camera),
                 ("Eye contact below 60%", int(d["low_eye"] or 0), camera),
@@ -282,7 +283,8 @@ def register(app, get_db, load_report, generate_questions):
         sql = f"""SELECT i.interview_id, i.user_id, u.full_name, u.email, i.category, i.difficulty,
                          i.number_of_questions, i.status, i.started_at, i.completed_at,
                          e.overall_score, e.response_quality_score, e.speech_performance_score,
-                         e.behavioral_score
+                         e.behavioral_score, e.delivery_score, e.performance_profile, e.rubric_version,
+                         i.career_goal
                   FROM interviews i
                   JOIN users u ON u.user_id = i.user_id
                   LEFT JOIN evaluations e ON e.interview_id = i.interview_id
@@ -321,6 +323,7 @@ def register(app, get_db, load_report, generate_questions):
             placeholders = ", ".join(["%s"] * len(ids))
             cursor.execute(f"""SELECT iq.interview_id,
                                       AVG(n.relevance_score) AS relevance, AVG(n.clarity_score) AS answer_clarity,
+                                      AVG(n.directness_score) AS directness, AVG(n.specificity_score) AS specificity,
                                       AVG(n.completeness_score) AS completeness, AVG(n.grammar_score) AS grammar,
                                       AVG(s.fluency_score) AS fluency, AVG(s.clarity_score) AS speech_clarity,
                                       AVG(s.confidence_score) AS confidence, AVG(s.speaking_rate) AS speaking_rate,
@@ -338,13 +341,15 @@ def register(app, get_db, load_report, generate_questions):
             details = {d["interview_id"]: d for d in cursor.fetchall()}
         conn.close()
 
-        detail_cols = ["relevance", "answer_clarity", "completeness", "grammar", "fluency", "speech_clarity",
+        detail_cols = ["relevance", "directness", "completeness", "specificity", "answer_clarity", "grammar",
+                       "fluency", "speech_clarity",
                        "confidence", "speaking_rate", "filler_words", "eye_contact", "facial_expression", "gestures"]
         out = io.StringIO()
         writer = csv.writer(out)
         head = ["interview_id", "student_id"] + (["student_name"] if include_names else []) + [
-            "category", "difficulty", "questions", "status", "started_at", "completed_at",
-            "overall", "response_quality", "speech_performance", "behavioral"] + detail_cols
+            "career_goal", "category", "difficulty", "questions", "status", "started_at", "completed_at",
+            "rubric", "overall", "answer_effectiveness", "delivery", "verbal_delivery", "nonverbal_delivery",
+            "profile"] + detail_cols
         writer.writerow(head)
         def fmt(v):
             if v is None:
@@ -353,10 +358,10 @@ def register(app, get_db, load_report, generate_questions):
         for r in rows:
             d = details.get(r["interview_id"], {})
             writer.writerow([r["interview_id"], r["user_id"]] + ([r["full_name"]] if include_names else []) + [
-                r["category"], r["difficulty"], r["number_of_questions"], r["status"],
-                r["started_at"] or "", r["completed_at"] or "",
-                fmt(r["overall_score"]), fmt(r["response_quality_score"]),
-                fmt(r["speech_performance_score"]), fmt(r["behavioral_score"])] +
+                r["career_goal"] or "", r["category"], r["difficulty"], r["number_of_questions"], r["status"],
+                r["started_at"] or "", r["completed_at"] or "", r["rubric_version"] or ("v1" if r["overall_score"] is not None else ""),
+                fmt(r["overall_score"]), fmt(r["response_quality_score"]), fmt(r["delivery_score"]),
+                fmt(r["speech_performance_score"]), fmt(r["behavioral_score"]), r["performance_profile"] or ""] +
                 [fmt(d.get(c)) for c in detail_cols])
         filename = f"aimis_interviews_{date.today().isoformat()}.csv"
         # utf-8-sig so Excel shows names with ñ and accents correctly
@@ -394,8 +399,8 @@ def register(app, get_db, load_report, generate_questions):
         if view == "pending":
             where.append("qb.review_status = 'pending'")
         elif view == "off":
-            where.append("qb.is_active = 0 AND COALESCE(qb.review_status, 'approved') NOT IN ('pending', 'demo')")
-        else:
+            where.append("qb.is_active = 0 AND COALESCE(qb.review_status, 'approved') NOT IN ('pending', 'demo', 'live', 'followup')")
+        else:                      # questions written live in interviews are private to the student: never listed
             where.append("qb.is_active = 1")
         if category:
             where.append("qb.category = %s"); values.append(category)
@@ -412,7 +417,7 @@ def register(app, get_db, load_report, generate_questions):
                                         qb.question_id DESC""", values)
             questions = cursor.fetchall()
             cursor.execute("""SELECT SUM(is_active = 1) AS active, SUM(review_status = 'pending') AS pending,
-                                     SUM(is_active = 0 AND review_status NOT IN ('pending', 'demo')) AS off
+                                     SUM(is_active = 0 AND review_status NOT IN ('pending', 'demo', 'live', 'followup')) AS off
                               FROM question_bank""")
             counts = cursor.fetchone()
             ready = True
@@ -428,7 +433,7 @@ def register(app, get_db, load_report, generate_questions):
         return render_template("admin/questions.html", active="questions", questions=questions,
                                q_total=q_total, page=q_page, pages=q_pages, all_ids=all_shown_ids,
                                counts=counts, view=view, category=category, difficulty=difficulty,
-                               cats=cats, difficulties=DIFFICULTIES, ready=ready)
+                               cats=cats, difficulties=DIFFICULTIES, ready=ready, career_names=careers.NAMES)
 
     def back_to_questions():
         return redirect(safe_next(url_for("admin_questions")))
@@ -445,11 +450,13 @@ def register(app, get_db, load_report, generate_questions):
             flash("Choose a category and a difficulty first.")
             return back_to_questions()
         conn, cursor = db()
-        cursor.execute("SELECT question_text FROM question_bank WHERE category = %s AND difficulty = %s",
-                       (category, difficulty))
+        career = request.form.get("career_track") if request.form.get("career_track") in careers.NAMES else None
+        cursor.execute("""SELECT question_text FROM question_bank WHERE category = %s AND difficulty = %s
+                          AND review_status NOT IN ('live', 'followup')""", (category, difficulty))
         existing = [r["question_text"] for r in cursor.fetchall()]
         try:
-            new = generate_questions(category, difficulty, count, existing)
+            new = generate_questions(category, difficulty, count, existing,
+                                     career=careers.context(career) if career else None)
         except Exception as e:
             conn.close()
             print("Question generation failed:", e)
@@ -457,8 +464,8 @@ def register(app, get_db, load_report, generate_questions):
             return back_to_questions()
         for text in new:
             cursor.execute("""INSERT INTO question_bank (question_text, category, difficulty, is_active,
-                                                         source, review_status)
-                              VALUES (%s, %s, %s, 0, 'ai', 'pending')""", (text, category, difficulty))
+                                                         source, review_status, career_track)
+                              VALUES (%s, %s, %s, 0, 'ai', 'pending', %s)""", (text, category, difficulty, career))
         conn.commit()
         conn.close()
         flash(f"The AI wrote {len(new)} new {difficulty} {category} question{'s' if len(new) != 1 else ''}. "
@@ -508,9 +515,11 @@ def register(app, get_db, load_report, generate_questions):
             cursor.execute("UPDATE question_bank SET is_active = 0 WHERE question_id = %s", (question_id,))
             flash("Question turned off. It won't be asked anymore, but old reports still show it.")
         elif action == "turn_on":
-            cursor.execute("""UPDATE question_bank SET is_active = 1, review_status = 'approved'
-                              WHERE question_id = %s""", (question_id,))
-            flash("Question turned back on.")
+            # A question written live for one student becomes a normal bank question (source 'ai')
+            cursor.execute("""UPDATE question_bank SET is_active = 1, review_status = 'approved',
+                                     source = IF(source = 'live', 'ai', source)
+                              WHERE question_id = %s AND review_status <> 'followup'""", (question_id,))
+            flash("Question turned on. Students can get it from the bank now.")
         conn.commit()
         conn.close()
         return back_to_questions()

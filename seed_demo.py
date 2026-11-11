@@ -16,6 +16,7 @@ import my_data
 DEMO_EMAIL = "demo@aimis.local"
 DEMO_NAME = "Demo Student"
 DEMO_PASSWORD = "demo1234"
+DEMO_CAREER = "IT professional"     # the demo student's career goal
 
 # (category, days ago, [(question, answer, speech, camera)])
 # speech = (words per minute, filler words, long pauses, fluency, confidence, clarity)
@@ -88,14 +89,14 @@ def main():
     row = cursor.fetchone()
     if row:
         user_id = row["user_id"]
-        cursor.execute("UPDATE users SET password = %s, full_name = %s WHERE user_id = %s",
-                       (generate_password_hash(DEMO_PASSWORD), DEMO_NAME, user_id))
+        cursor.execute("UPDATE users SET password = %s, full_name = %s, career_goal = %s WHERE user_id = %s",
+                       (generate_password_hash(DEMO_PASSWORD), DEMO_NAME, DEMO_CAREER, user_id))
         conn.commit()
         my_data.delete_user_data(conn, aimis.app.root_path, user_id)   # old demo interviews
         print("Removed the old demo interviews.")
     else:
-        cursor.execute("INSERT INTO users (full_name, email, password) VALUES (%s, %s, %s)",
-                       (DEMO_NAME, DEMO_EMAIL, generate_password_hash(DEMO_PASSWORD)))
+        cursor.execute("INSERT INTO users (full_name, email, password, career_goal) VALUES (%s, %s, %s, %s)",
+                       (DEMO_NAME, DEMO_EMAIL, generate_password_hash(DEMO_PASSWORD), DEMO_CAREER))
         user_id = cursor.lastrowid
         conn.commit()
         print("Created the demo account.")
@@ -109,9 +110,9 @@ def main():
     for category, days_ago, items in INTERVIEWS:
         finished = datetime.now().replace(microsecond=0) - timedelta(days=days_ago)
         cursor.execute("""INSERT INTO interviews (user_id, category, difficulty, number_of_questions,
-                                                  status, started_at, completed_at)
-                          VALUES (%s, %s, 'Beginner', %s, 'completed', %s, %s)""",
-                       (user_id, category, len(items), finished - timedelta(minutes=12), finished))
+                                                  status, started_at, completed_at, career_goal)
+                          VALUES (%s, %s, 'Beginner', %s, 'completed', %s, %s, %s)""",
+                       (user_id, category, len(items), finished - timedelta(minutes=12), finished, DEMO_CAREER))
         interview_id = cursor.lastrowid
         cursor.execute("""INSERT INTO consents (user_id, interview_id, consent_given, consent_version)
                           VALUES (%s, %s, 1, %s)""", (user_id, interview_id, aimis.CONSENT_VERSION))

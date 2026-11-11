@@ -1,6 +1,7 @@
 """Personalized feedback: per-answer feedback, sub-skill labels, and comparison with past interviews."""
 import re
 from ai_service import SKILL_LABELS
+import scoring
 
 RATINGS = ("strong", "okay", "weak")
 _SKILL_LOOKUP = {s.lower(): s for s in SKILL_LABELS}
@@ -145,7 +146,7 @@ def weakest_skill(cursor, user_id):
 def past_scores(cursor, user_id, before_interview_id):
     """Scores of the user's scored interviews before this one, oldest first."""
     cursor.execute("""SELECT i.interview_id, i.category, i.difficulty, i.completed_at,
-                             e.overall_score, e.response_quality_score,
+                             e.overall_score, e.response_quality_score, e.delivery_score,
                              e.speech_performance_score, e.behavioral_score
                       FROM interviews i JOIN evaluations e ON e.interview_id = i.interview_id
                       WHERE i.user_id = %s AND i.interview_id < %s
@@ -153,8 +154,9 @@ def past_scores(cursor, user_id, before_interview_id):
     return cursor.fetchall()
 
 
-PARTS = [("Overall", "overall_score"), ("Response quality", "response_quality_score"),
-         ("Speech", "speech_performance_score"), ("Behavior", "behavioral_score")]
+PARTS = [("Overall", "overall_score"), ("Answer effectiveness", "response_quality_score"),
+         ("Communication delivery", "delivery_score"), ("Verbal delivery", "speech_performance_score"),
+         ("Nonverbal delivery", "behavioral_score")]
 
 
 def _average(rows, key):
@@ -257,8 +259,9 @@ def _fallback_items(result, qa_list, have_strength, have_improve):
     for n, (qa, a) in enumerate(zip(qa_list, result.get("answers") or []), start=1):
         if not isinstance(a, dict):
             continue
-        scores = [float(a.get(k) or 0) for k in ("relevance", "clarity", "completeness", "grammar")]
-        rated.append((sum(scores) / 4, n, qa, clean_answer_feedback(a, qa.get("transcript"))))
+        avg = scoring.answer_score({f"{k}_score": a.get(k) for k in ("relevance", "directness",
+                                                                    "completeness", "specificity")}) or 0
+        rated.append((avg, n, qa, clean_answer_feedback(a, qa.get("transcript"))))
     rated.sort(key=lambda t: t[0])
     items = []
     if not have_improve:

@@ -28,7 +28,12 @@ async function run() {
   statusEl.textContent = "AIMIS is transcribing your answers and evaluating your interview. This can take up to a minute. Please don't close this page.";
   seconds = 0;
   clearInterval(timerId);
-  timerId = setInterval(() => { seconds++; timerEl.textContent = "Elapsed: " + seconds + "s"; }, 1000);
+  timerId = setInterval(() => {
+    seconds++;
+    timerEl.textContent = "Elapsed: " + seconds + "s";
+    if (seconds === 60) statusEl.textContent = "Still working. When Gemini's limit is reached, AIMIS uses the offline AI on this " +
+      "computer instead, which can take a few minutes. Please keep this page open.";
+  }, 1000);
   try {
     const res = await fetch(processUrl, { method: "POST" });
     const data = await res.json();

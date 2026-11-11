@@ -16,8 +16,12 @@
       <div class="room-text">
         <p class="room-kicker">AI mock interview</p>
         <h1>Hi, {{ (session.full_name or 'there').split(' ')[0] }}! Ready for your interview?</h1>
-        <p class="room-sub">AIMIS Bot asks real soft-skill interview questions out loud. You answer by speaking,
-          and you get feedback on your answer, your voice, and your body language.</p>
+        <p class="room-sub">AIMIS Bot asks interview questions for your target job out loud and follows up on what you
+          say, like a real interviewer. You answer by speaking, and you get feedback on your answer, your voice,
+          and your body language.</p>
+        {% if career %}
+          <p class="room-career">Target job: <b>{{ career }}</b> · <a href="{{ url_for('career_goal', next=request.path) }}">Change</a></p>
+        {% endif %}
         <div class="room-actions">
           <a href="{{ url_for('start_interview') }}" class="btn btn-lg btn-light">{{ ui_icon("play", 16) }} Start mock interview</a>
           <span class="room-note">About 5–10 minutes</span>
@@ -65,7 +69,7 @@
   <section class="tile tile-practice">
     <div class="tile-head">
       <h2>Practice a skill</h2>
-      <p class="muted small">Pick a soft skill and the interviewer will prepare questions for it.</p>
+      <p class="muted small">Pick a skill and the interviewer will prepare questions for it{% if career %}, set in your target job ({{ career }}){% endif %}.</p>
     </div>
     <div class="skill-grid">
       {% for name, desc in SKILLS %}
