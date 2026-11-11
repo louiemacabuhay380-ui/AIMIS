@@ -7,7 +7,7 @@
 </div>
 {% include "admin/_tabs.html" %}
 
-<form method="GET" class="filter-bar card">
+<form method="GET" class="filter-bar card a-filter">
   <label class="grow">Search
     <input name="q" value="{{ q }}" placeholder="Name or email">
   </label>
@@ -15,7 +15,7 @@
   {% if q %}<a href="{{ url_for('admin_users') }}" class="btn btn-outline">Clear</a>{% endif %}
 </form>
 
-<div class="card table-card">
+<div class="card table-card a-table">
   <p class="muted small table-note">{{ total }} account{{ 's' if total != 1 }}{% if q %} matching "{{ q }}"{% endif %}</p>
   <div class="table-scroll">
   <table class="data-table">

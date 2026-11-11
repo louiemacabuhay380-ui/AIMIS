@@ -7,7 +7,7 @@
 </div>
 {% include "admin/_tabs.html" %}
 
-<form method="GET" class="filter-bar card">
+<form method="GET" class="filter-bar card a-filter">
   <label class="grow">Student<input name="q" value="{{ args.q or '' }}" placeholder="Name or email"></label>
   <label>Skill
     <select name="category"><option value="">All</option>
@@ -25,7 +25,7 @@
   {% if args %}<a href="{{ url_for('admin_interviews') }}" class="btn btn-outline">Clear</a>{% endif %}
 </form>
 
-<div class="card table-card">
+<div class="card table-card a-table">
   <div class="card-head">
     <p class="muted small table-note">{{ total }} interview{{ 's' if total != 1 }}</p>
     <details class="export">
@@ -47,7 +47,7 @@
         <td><a href="{{ url_for('admin_user', user_id=r.user_id) }}">{{ r.full_name }}</a></td>
         <td>{{ r.category }}</td><td>{{ r.difficulty }}</td><td class="num">{{ r.number_of_questions }}</td>
         <td>{{ status(r.status) }}</td>
-        <td>{{ r.started_at.strftime('%b %d, %Y %I:%M %p') if r.started_at else '–' }}</td>
+        <td>{{ r.started_at.strftime('%b %d, %I:%M %p') if r.started_at else '–' }}</td>
         <td class="num">{{ score(r.overall_score) }}</td><td class="num">{{ score(r.response_quality_score) }}</td>
         <td class="num">{{ score(r.speech_performance_score) }}</td><td class="num">{{ score(r.behavioral_score) }}</td>
         <td class="num">{% if r.status == 'completed' %}<a href="{{ url_for('admin_report', interview_id=r.interview_id) }}">View</a>{% endif %}</td>

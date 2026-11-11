@@ -7,20 +7,22 @@
 </div>
 {% include "admin/_tabs.html" %}
 
-<div class="grid-4 admin-kpis">
-  <div class="card stat"><span class="stat-label">Students</span><span class="stat-value">{{ stats.students }}</span>
+{# Bento layout: 4 stats | chart + averages + weak areas | skills + sub-skills + recent #}
+<div class="bento-admin">
+
+  {# ---- Row 1: key numbers ---- #}
+  <div class="tile a-stat"><span class="stat-label">Students</span><span class="stat-value">{{ stats.students }}</span>
     <span class="stat-note">{{ stats.active_week }} practiced this week</span></div>
-  <div class="card stat"><span class="stat-label">Interviews completed</span><span class="stat-value">{{ stats.done }}</span>
+  <div class="tile a-stat"><span class="stat-label">Interviews completed</span><span class="stat-value">{{ stats.done }}</span>
     <span class="stat-note">{{ stats.done_week }} in the last 7 days</span></div>
-  <div class="card stat"><span class="stat-label">Average overall score</span>
+  <div class="tile a-stat"><span class="stat-label">Average overall score</span>
     <span class="stat-value">{{ "%.0f%%" | format(stats.overall) if stats.overall is number else "–" }}</span>
     <span class="stat-note">From {{ stats.scored }} scored interview{{ 's' if stats.scored != 1 }}</span></div>
-  <div class="card stat"><span class="stat-label">Questions to review</span><span class="stat-value">{{ pending }}</span>
+  <div class="tile a-stat"><span class="stat-label">Questions to review</span><span class="stat-value">{{ pending }}</span>
     <span class="stat-note"><a href="{{ url_for('admin_questions', view='pending') }}">Open the review list</a></span></div>
-</div>
 
-<div class="grid-2 admin-row">
-  <div class="card">
+  {# ---- Row 2: activity, averages, weak areas ---- #}
+  <section class="tile a-chart">
     <h2>Interviews completed, last 14 days</h2>
     <div class="col-chart" role="img" aria-label="Interviews completed per day: {% for d in daily %}{{ d.label }} {{ d.n }}{{ ', ' if not loop.last }}{% endfor %}">
       {% for d in daily %}
@@ -31,9 +33,9 @@
         </div>
       {% endfor %}
     </div>
-  </div>
+  </section>
 
-  <div class="card">
+  <section class="tile a-avg">
     <h2>Average scores</h2>
     {% for label, v in [("Response quality", stats.quality), ("Speech performance", stats.speech), ("Body language", stats.behavior)] %}
       <div class="score-row">
@@ -41,15 +43,28 @@
         <div class="bar"><span style="width: {{ v if v is number else 0 }}%"></span></div>
       </div>
     {% endfor %}
-  </div>
-</div>
+  </section>
 
-<div class="grid-2 admin-row">
-  <div class="card">
+  <section class="tile a-weak">
+    <h2>Common weak areas</h2>
+    <p class="muted small">Share of scored interviews below 60. Plan what to teach next.</p>
+    {% if weak %}
+      {% for w in weak %}
+        <div class="score-row" title="{{ w.n }} of {{ w.of }} interviews">
+          <div class="label-line"><span>{{ w.label }}</span><span>{{ w.pct }}% <small class="muted">({{ w.n }}/{{ w.of }})</small></span></div>
+          <div class="bar bar-warn"><span style="width: {{ w.pct }}%"></span></div>
+        </div>
+      {% endfor %}
+    {% else %}<p class="muted">Not enough scored interviews yet.</p>{% endif %}
+  </section>
+
+  {# ---- Row 3: skills, sub-skills, recent (fixed height, lists scroll inside) ---- #}
+  <section class="tile a-list">
     <h2>Most practiced skills</h2>
+    <div class="a-scroll">
     {% if cats %}
       <table class="data-table compact">
-        <thead><tr><th>Skill</th><th>Interviews</th><th class="num">Avg score</th></tr></thead>
+        <thead><tr><th>Skill</th><th>Interviews</th><th class="num">Avg</th></tr></thead>
         <tbody>
         {% for c in cats %}
           <tr title="{{ c.category }}: {{ c.n }} interviews">
@@ -61,62 +76,49 @@
         </tbody>
       </table>
     {% else %}<p class="muted">No completed interviews yet.</p>{% endif %}
-  </div>
-
-  <div class="card">
-    <h2>Common weak areas</h2>
-    <p class="muted small">Share of scored interviews where students struggled. Use this to plan what to teach next.</p>
-    {% if weak %}
-      {% for w in weak %}
-        <div class="score-row" title="{{ w.n }} of {{ w.of }} interviews">
-          <div class="label-line"><span>{{ w.label }}</span><span>{{ w.pct }}%</span></div>
-          <div class="bar bar-warn"><span style="width: {{ w.pct }}%"></span></div>
-          <p class="score-desc">{{ w.n }} of {{ w.of }} interviews</p>
-        </div>
-      {% endfor %}
-    {% else %}<p class="muted">Not enough scored interviews yet.</p>{% endif %}
-  </div>
-</div>
-
-<div class="card admin-row">
-  <div class="card-head"><h2>Sub-skills across all students</h2>
-    <span class="class-legend muted small"><i class="lg lg-weak"></i>Weak <i class="lg lg-okay"></i>Okay <i class="lg lg-strong"></i>Strong</span></div>
-  {% if class_skills %}
-    <p class="muted small">How the AI rated each sub-skill in every student's answers (demo account not counted).
-      The top rows are what to teach next.</p>
-    <div class="class-skills">
-      {% for s in class_skills %}
-        <div class="class-skill" title="{{ s.weak }} weak, {{ s.okay }} okay, {{ s.strong }} strong out of {{ s.total }} answers">
-          <span class="class-skill-name">{{ s.name }}</span>
-          <span class="stack" role="img" aria-label="{{ s.name }}: {{ s.weak_pct }}% weak, {{ s.okay_pct }}% okay, {{ s.strong_pct }}% strong">
-            <i class="lg-weak" style="width: {{ s.weak_pct }}%"></i><i class="lg-okay" style="width: {{ s.okay_pct }}%"></i><i class="lg-strong" style="width: {{ s.strong_pct }}%"></i>
-          </span>
-          <span class="class-skill-pct"><b>{{ s.weak_pct }}%</b> weak</span>
-          <span class="muted small class-skill-who">{{ s.weak_students }} student{{ 's' if s.weak_students != 1 }} · {{ s.total }} answers</span>
-        </div>
-      {% endfor %}
     </div>
-  {% else %}
-    <p class="muted">Appears after interviews are scored with sub-skill labels.</p>
-  {% endif %}
-</div>
+  </section>
 
-<div class="card admin-row">
-  <div class="card-head"><h2>Recently completed</h2><a href="{{ url_for('admin_interviews') }}" class="btn btn-sm btn-outline">All interview records</a></div>
-  {% if recent %}
-    <table class="data-table">
-      <thead><tr><th>Student</th><th>Skill</th><th>Difficulty</th><th>Completed</th><th class="num">Overall</th><th></th></tr></thead>
-      <tbody>
-      {% for r in recent %}
-        <tr>
-          <td>{{ r.full_name }}</td><td>{{ r.category }}</td><td>{{ r.difficulty }}</td>
-          <td>{{ r.completed_at.strftime('%b %d, %I:%M %p') if r.completed_at else '–' }}</td>
-          <td class="num">{{ score(r.overall_score | float if r.overall_score is not none else none) }}</td>
-          <td class="num"><a href="{{ url_for('admin_report', interview_id=r.interview_id) }}">View</a></td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  {% else %}<p class="muted">No completed interviews yet.</p>{% endif %}
+  <section class="tile a-list">
+    <div class="a-head"><h2>Sub-skills across students</h2>
+      <span class="class-legend muted small"><i class="lg lg-weak"></i>Weak <i class="lg lg-okay"></i>Okay <i class="lg lg-strong"></i>Strong</span></div>
+    <div class="a-scroll">
+    {% if class_skills %}
+      <div class="a-skills">
+        {% for s in class_skills %}
+          <div class="a-skill" title="{{ s.weak }} weak, {{ s.okay }} okay, {{ s.strong }} strong out of {{ s.total }} answers · {{ s.weak_students }} student{{ 's' if s.weak_students != 1 }}">
+            <div class="a-skill-top"><span>{{ s.name }}</span><span><b>{{ s.weak_pct }}%</b> weak</span></div>
+            <span class="stack" role="img" aria-label="{{ s.name }}: {{ s.weak_pct }}% weak, {{ s.okay_pct }}% okay, {{ s.strong_pct }}% strong">
+              <i class="lg-weak" style="width: {{ s.weak_pct }}%"></i><i class="lg-okay" style="width: {{ s.okay_pct }}%"></i><i class="lg-strong" style="width: {{ s.strong_pct }}%"></i>
+            </span>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">Appears after interviews are scored with sub-skill labels.</p>
+    {% endif %}
+    </div>
+  </section>
+
+  <section class="tile a-list">
+    <div class="a-head"><h2>Recently completed</h2><a href="{{ url_for('admin_interviews') }}" class="small">All records</a></div>
+    <div class="a-scroll">
+    {% if recent %}
+      <table class="data-table compact">
+        <thead><tr><th>Student</th><th>Skill</th><th class="num">Overall</th></tr></thead>
+        <tbody>
+        {% for r in recent %}
+          <tr title="{{ r.difficulty }} · {{ r.completed_at.strftime('%b %d, %I:%M %p') if r.completed_at else '' }}">
+            <td><a href="{{ url_for('admin_report', interview_id=r.interview_id) }}">{{ r.full_name }}</a>
+              <span class="a-sub">{{ r.completed_at.strftime('%b %d') if r.completed_at else '–' }}</span></td>
+            <td>{{ r.category }}<span class="a-sub">{{ r.difficulty }}</span></td>
+            <td class="num">{{ score(r.overall_score | float if r.overall_score is not none else none) }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}<p class="muted">No completed interviews yet.</p>{% endif %}
+    </div>
+  </section>
 </div>
 {% endblock %}

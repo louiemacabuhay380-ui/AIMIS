@@ -16,7 +16,8 @@
   </div>
 {% else %}
 
-<div class="grid-2 admin-row">
+<div class="q-layout">
+<aside class="q-side">
   <form method="POST" action="{{ url_for('admin_questions_generate') }}" class="card form generate-card"
         onsubmit="this.querySelector('button').disabled = true; this.querySelector('button').textContent = 'Writing questions...';">
     <h2>Generate questions with AI</h2>
@@ -44,9 +45,9 @@
     <input type="hidden" name="next" value="{{ here }}">
     <button type="submit" class="btn btn-outline">Add question</button>
   </form>
-</div>
+</aside>
 
-<div class="card table-card admin-row">
+<div class="card table-card q-panel">
   <div class="q-toolbar">
     <div class="segmented">
       {% for v, l, n in [("active", "In use", counts.active), ("pending", "To review", counts.pending), ("off", "Turned off", counts.off)] %}
@@ -115,6 +116,7 @@
   {% if category %}{% set _ = qargs.update({"category": category}) %}{% endif %}
   {% if difficulty %}{% set _ = qargs.update({"difficulty": difficulty}) %}{% endif %}
   {{ pager("admin_questions", page, pages, qargs) }}
+</div>
 </div>
 {% endif %}
 {% endblock %}
