@@ -925,7 +925,7 @@ finishBtn.onclick = () => {
 let thinkingBubble = null;
 function showThinking() {
   if (!adaptive || thinkingBubble) return;
-  thinkingBubble = addBubble("ai thinking", "Interviewer", `<p class="typing" aria-label="AIMIS Bot is thinking"><span></span><span></span><span></span></p>`);
+  thinkingBubble = addBubble("ai thinking", "Interviewer", `<p class="iv-typing" aria-label="AIMIS Bot is thinking"><span></span><span></span><span></span></p>`);
 }
 function hideThinking() {
   if (thinkingBubble) thinkingBubble.remove();

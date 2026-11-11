@@ -2148,15 +2148,15 @@ input:focus-visible, select:focus-visible, textarea:focus-visible, .pick input:f
 
 /* Live interviewer: "thinking" dots while it listens to the answer */
 .bubble.thinking { padding: 10px 16px; }
-.typing { display: inline-flex; gap: 5px; align-items: center; height: 18px; margin: 0; }
-.typing span {
+.iv-typing { display: inline-flex; gap: 5px; align-items: center; height: 18px; margin: 0; }
+.iv-typing span {
   width: 8px; height: 8px; border-radius: 50%; background: var(--muted); opacity: 0.4;
   animation: typing-dot 1.2s infinite ease-in-out;
 }
-.typing span:nth-child(2) { animation-delay: 0.15s; }
-.typing span:nth-child(3) { animation-delay: 0.3s; }
+.iv-typing span:nth-child(2) { animation-delay: 0.15s; }
+.iv-typing span:nth-child(3) { animation-delay: 0.3s; }
 @keyframes typing-dot { 0%, 80%, 100% { opacity: 0.3; transform: translateY(0); } 40% { opacity: 1; transform: translateY(-3px); } }
-@media (prefers-reduced-motion: reduce) { .typing span { animation: none; opacity: 0.7; } }
+@media (prefers-reduced-motion: reduce) { .iv-typing span { animation: none; opacity: 0.7; } }
 .followup-tag {
   display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
   background: var(--surface-2); color: var(--muted); border: 1px solid var(--border); vertical-align: 2px;
