@@ -99,10 +99,6 @@
       <video id="selfView" autoplay muted playsinline></video>
       <span class="cam-label">You</span>
       <span class="face-status" id="faceStatus" aria-live="polite">Starting your camera...</span>
-      <div class="cam-paused" id="camPaused" hidden>
-        <b>Body language check paused</b>
-        <span>Nothing is measured while AIMIS Bot thinks about your answer. Relax for a moment.</span>
-      </div>
     </div>
   </div>
 
@@ -783,11 +779,9 @@ function setState(newState) {
 // body language only counts while the student is answering, and the face-check warnings stop too.
 function pauseCameraCheck(paused) {
   const box = document.getElementById("camBox"), badge = document.getElementById("faceStatus");
-  const note = document.getElementById("camPaused");
   if (!box || !window.behavior || !!window.behavior.paused === paused) return;
   window.behavior.paused = paused;
   box.classList.toggle("is-paused", paused);
-  note.hidden = !paused;
   if (paused) {
     box.dataset.face = "paused";
     badge.textContent = "Paused";
