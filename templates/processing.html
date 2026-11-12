@@ -2,6 +2,7 @@
 {% block title %}Analyzing · AIMIS{% endblock %}
 
 {% from "_robot.html" import robot %}
+{% block layout %}focus{% endblock %}
 {% block content %}
 <div class="card processing">
   <div class="processing-bot">{{ robot("thinking") }}</div>
