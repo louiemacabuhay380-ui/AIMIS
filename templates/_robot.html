@@ -1,20 +1,10 @@
 {# The AIMIS Bot mascot. mood: happy | neutral | listening | thinking | concerned
-   Put defs=true on the first robot of a page (it holds the shared colors). #}
+   The shared colors (gradients, glow) are defined once per page by robot_defs(), included in base.html.
+   (defs= is kept only so older calls still work.) #}
 {% macro robot(mood="happy", cls="", defs=true) -%}
 <span class="mascot" data-mood="{{ mood }}">
 <svg class="robot {{ cls }}" viewBox="0 0 220 240" aria-hidden="true">
-        {% if defs %}<defs>
-          <radialGradient id="rbShell" cx="38%" cy="28%" r="80%">
-            <stop offset="0" stop-color="#ffffff"/><stop offset="0.65" stop-color="#e9eef3"/><stop offset="1" stop-color="#c3ccd6"/>
-          </radialGradient>
-          <linearGradient id="rbVisor" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0" stop-color="#1a2836"/><stop offset="1" stop-color="#05090e"/>
-          </linearGradient>
-          <filter id="rbGlow" x="-60%" y="-60%" width="220%" height="220%">
-            <feGaussianBlur stdDeviation="2.6" result="b"/>
-            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-          </filter>
-        </defs>{% endif %}
+        {# colors come from robot_defs() in base.html, so every robot looks right even in a hidden tab #}
 
         <!-- body: shoulders, neck joint and chest light -->
         <path d="M46 240 C46 204 70 188 110 188 C150 188 174 204 174 240 Z" class="rb-shell"/>
@@ -55,4 +45,24 @@
         </g>
       </svg>
 </span>
+{%- endmacro %}
+
+
+{# Shared robot colors: one invisible SVG at the top of every page. It is never hidden with display:none,
+   because browsers don't draw gradients from hidden SVGs (robots in a hidden tab looked washed out). #}
+{% macro robot_defs() -%}
+<svg width="0" height="0" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true" focusable="false">
+        <defs>
+          <radialGradient id="rbShell" cx="38%" cy="28%" r="80%">
+            <stop offset="0" stop-color="#ffffff"/><stop offset="0.65" stop-color="#e9eef3"/><stop offset="1" stop-color="#c3ccd6"/>
+          </radialGradient>
+          <linearGradient id="rbVisor" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#1a2836"/><stop offset="1" stop-color="#05090e"/>
+          </linearGradient>
+          <filter id="rbGlow" x="-60%" y="-60%" width="220%" height="220%">
+            <feGaussianBlur stdDeviation="2.6" result="b"/>
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
+        </defs>
+</svg>
 {%- endmacro %}

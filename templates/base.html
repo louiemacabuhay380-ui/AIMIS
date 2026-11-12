@@ -155,6 +155,7 @@
   </a>
 {% endmacro %}
 <body class="{{ 'has-sidebar' if with_sidebar else 'no-sidebar' }}">
+{% from "_robot.html" import robot_defs %}{{ robot_defs() }}
 {% if with_sidebar %}
   {% set ep = request.endpoint or '' %}
   {# ---- Phone and tablet: top bar with a menu button that opens the sidebar ---- #}
