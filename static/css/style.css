@@ -2847,12 +2847,7 @@ body.has-sidebar > .container { padding-top: 28px; }
 .cam-box-live.is-paused video { filter: grayscale(0.7) brightness(0.55); transition: filter 0.3s; }
 .cam-box-live[data-face="paused"]::after { box-shadow: inset 0 0 0 3px #94a3b8; }
 
-/* Report tabs (Scores / Feedback / Your answers): fixed at the top of the page while scrolling, on a solid strip,
-   so the cards scroll under it instead of the tabs floating over them */
-.report-tabbar { position: sticky; top: 0; z-index: 30; margin: 0 -4px 16px; padding: 10px 4px;
-                 background: var(--bg); border-bottom: 1px solid transparent; transition: border-color 0.2s, box-shadow 0.2s; }
-.report-tabbar.is-stuck { border-bottom-color: var(--border); box-shadow: 0 6px 12px -10px rgba(15, 23, 42, 0.25); }
+/* Report tabs (Scores / Feedback / Your answers): stay in their place under the title (they don't follow the
+   scroll or float over the cards) */
+.report-tabbar { margin: 0 0 16px; }
 .report-tabbar .report-jump { position: static; margin: 0; }
-#sec-scores, #sec-feedback, #sec-answers, .report-panel { scroll-margin-top: 80px; }
-body.no-sidebar .report-tabbar { top: 0; }
-@media (max-width: 1023px) { body.has-sidebar .report-tabbar { top: 58px; } }

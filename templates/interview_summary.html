@@ -558,13 +558,7 @@
   (function () {
     const panels = [...document.querySelectorAll(".report-panel")];
     const tabs = [...document.querySelectorAll(".report-tabs a")];
-    // Thin line under the tab strip once it sticks to the top
-    const tabbar = document.querySelector(".report-tabbar");
-    if (tabbar) {
-      const onScroll = () => tabbar.classList.toggle("is-stuck", tabbar.getBoundingClientRect().top <= 1 && window.scrollY > 0);
-      window.addEventListener("scroll", onScroll, { passive: true });
-      onScroll();
-    }
+
     const panes = [...document.querySelectorAll(".answer-pane")];
     const links = [...document.querySelectorAll(".answer-link")];
     if (!panels.length) return;
