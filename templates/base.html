@@ -147,12 +147,12 @@
   </details>
 {% endmacro %}
 {% macro brand(link=true) %}
-  <a href="{{ url_for('dashboard') if session.get('user_id') else url_for('login') }}" class="brand">
+  {% if link %}<a href="{{ url_for('dashboard') if session.get('user_id') else url_for('login') }}" class="brand">{% else %}<span class="brand">{% endif %}
     <span class="brand-logo">
       <img src="{{ url_for('static', filename='img/aimis-mark.png') }}" alt="" onerror="this.style.display='none'">
     </span>
     <span class="brand-text"><span class="brand-name">AIMIS</span><span class="brand-tag">AI Mock Interview</span></span>
-  </a>
+  {% if link %}</a>{% else %}</span>{% endif %}
 {% endmacro %}
 <body class="{{ 'has-sidebar' if with_sidebar else 'no-sidebar' }}">
 {% from "_robot.html" import robot_defs %}{{ robot_defs() }}
@@ -201,11 +201,12 @@
   {# ---- Before logging in, during setup and during an interview: plain top bar ---- #}
   <header class="site-header">
     <div class="site-header-inner">
-      {{ brand() }}
+      {# While the results are being prepared nothing here leads away from the page #}
+      {{ brand(link=request.endpoint != 'processing') }}
       <nav class="site-nav">
         {# Setup pages (onboarding, consent): logo only. Interview room: profile only.
            The dark mode switch and Log out are in the dashboard sidebar. #}
-        {% if session.get('user_id') and request.endpoint not in ('welcome', 'privacy_consent') %}
+        {% if session.get('user_id') and request.endpoint not in ('welcome', 'privacy_consent', 'processing') %}
           {% if page_layout != 'focus' %}
             <a href="{{ url_for('admin_overview') if session.get('role') == 'admin' else url_for('dashboard') }}" class="nav-link nav-home">{{ ui_icon("home", 18) }} Home</a>
           {% endif %}
