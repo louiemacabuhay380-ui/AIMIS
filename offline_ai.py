@@ -62,10 +62,23 @@ def transcribe_local(audio_bytes):
         return _transcribe_local(audio_bytes)
 
 
+def _audio_array(audio_bytes):
+    """The recording as 16 kHz mono samples, decoded here with librosa (the same reader the speech analysis uses).
+    faster-whisper's own decoder needs the PyAV package, and some PyAV versions crash with
+    "open() got an unexpected keyword argument 'metadata_errors'"; passing samples skips PyAV completely."""
+    try:
+        import librosa
+        samples, _ = librosa.load(io.BytesIO(audio_bytes), sr=16000, mono=True)
+        return samples.astype("float32")
+    except Exception as e:
+        print("Couldn't decode the recording with librosa, letting Whisper try:", e)
+        return io.BytesIO(audio_bytes)
+
+
 def _transcribe_local(audio_bytes):
     start = time.perf_counter()
     segments, info = _whisper_model().transcribe(
-        io.BytesIO(audio_bytes), beam_size=1, vad_filter=False,
+        _audio_array(audio_bytes), beam_size=1, vad_filter=False,
         # Hinting fillers makes Whisper keep "um", "uh", "ano" instead of cleaning them away
         initial_prompt="Um, uh, ano, parang, so, like, I think, kasi, yung.")
     segments = list(segments)

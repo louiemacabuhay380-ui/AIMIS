@@ -2834,3 +2834,8 @@ body.has-sidebar > .container { padding-top: 28px; }
 .profile-pop .side-theme .ts-track { margin-left: auto; }
 .profile-pop .pop-logout, .profile-pop .pop-logout svg { color: var(--danger); }
 .profile-pop .pop-logout:hover { background: var(--danger-soft); }
+/* Blank header bar on pages with the sidebar: same height as the logo area, thin line under it */
+.topbar { display: block; height: 66px; padding: 0; margin-left: var(--side-w); position: sticky; top: 0; z-index: 40;
+          background: var(--surface); border-bottom: 1px solid var(--border); }
+body.has-sidebar > .container { padding-top: 24px; }
+@media (max-width: 1023px) { .topbar { display: none; } }
