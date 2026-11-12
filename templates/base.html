@@ -85,10 +85,10 @@
 {% from "_icons.html" import ui_icon %}
 {# Pages can ask for the plain top bar instead of the sidebar: {% block layout %}focus{% endblock %} #}
 {% set page_layout = self.layout() | trim %}
-{# Sidebar only on the home page (dashboard) and the admin panel; other pages get a top bar with the profile #}
+{# Sidebar on every logged-in page (same layout everywhere). Pages that set {% block layout %}focus{% endblock %}
+   (onboarding, consent before agreeing, device check, interview room) get a plain top bar instead. #}
 {% set ep0 = request.endpoint or '' %}
-{% set with_sidebar = session.get('user_id') and page_layout != 'focus'
-                      and (ep0 == 'dashboard' or (session.get('role') == 'admin' and (ep0.startswith('admin') or ep0 == 'interview_summary'))) %}
+{% set with_sidebar = session.get('user_id') and page_layout != 'focus' %}
 {% set is_student = session.get('role') == 'student' %}
 {% macro theme_switch() %}
   <!-- Theme switch: left = light, right = dark -->
@@ -108,7 +108,7 @@
 {% endmacro %}
 {% macro profile_menu(with_nav=true, in_sidebar=false) %}
   {% set role = session.get('role') %}
-  <details class="profile-menu{{ ' side-profile' if in_sidebar }}">
+  <details class="profile-menu{{ ' side-profile' if in_sidebar }}{{ ' is-current' if in_sidebar and request.endpoint in ('my_profile', 'privacy_consent', 'my_data') }}">
     <summary aria-label="Profile menu: {{ session.full_name }}" title="{{ session.full_name }}">
       <span class="user-avatar" aria-hidden="true">{{ (session.full_name or 'U')[0] | upper }}</span>
       {% if in_sidebar %}

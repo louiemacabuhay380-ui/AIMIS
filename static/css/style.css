@@ -2841,3 +2841,4 @@ body.has-sidebar > .container { padding-top: 24px; }
 @media (max-width: 1023px) { .topbar { display: none; } }
 
 body.has-sidebar > .container { padding-top: 28px; }
+.side-profile.is-current summary { background: var(--side-active); }
