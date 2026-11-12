@@ -106,14 +106,17 @@
     </svg>
   </button>
 {% endmacro %}
-{% macro profile_menu(with_nav=true) %}
+{% macro profile_menu(with_nav=true, in_sidebar=false) %}
   {% set role = session.get('role') %}
-  <details class="profile-menu">
-    <summary aria-label="Profile menu">
+  <details class="profile-menu{{ ' side-profile' if in_sidebar }}">
+    <summary aria-label="Profile menu: {{ session.full_name }}" title="{{ session.full_name }}">
       <span class="user-avatar" aria-hidden="true">{{ (session.full_name or 'U')[0] | upper }}</span>
-      <span class="profile-menu-text"><b>{{ session.full_name }}</b></span>
-      <svg class="profile-caret" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"
-           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      {% if in_sidebar %}
+        <span class="side-profile-text"><b>{{ session.full_name }}</b>
+          <small>{{ 'Administrator' if role == 'admin' else 'Evaluator' if role == 'rater' else 'Student' }}</small></span>
+        <svg class="profile-caret" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 15l5-5 5 5"/></svg>
+      {% endif %}
     </summary>
     <div class="profile-pop" role="menu">
       <div class="profile-pop-head">
@@ -130,6 +133,16 @@
         <a role="menuitem" href="{{ url_for('privacy_consent') }}">{{ ui_icon("shield", 18) }} Privacy &amp; consent</a>
       {% endif %}
       <a role="menuitem" href="{{ url_for('my_data') }}">{{ ui_icon("lock", 18) }} My data</a>
+      {% if in_sidebar %}
+        <div class="profile-pop-sep"></div>
+        {# Light / dark mode: shows the current mode, click anywhere on the row to switch #}
+        <button type="button" role="menuitemcheckbox" class="side-theme" data-theme-toggle aria-checked="false">
+          <span class="theme-ic theme-ic-light">{{ ui_icon("sun", 18) }}</span><span class="theme-ic theme-ic-dark">{{ ui_icon("moon", 18) }}</span>
+          <span class="theme-label-light">Light mode</span><span class="theme-label-dark">Dark mode</span>
+          <span class="ts-track" aria-hidden="true"><span class="ts-knob"></span></span>
+        </button>
+        <a role="menuitem" href="{{ url_for('logout') }}" class="pop-logout">{{ ui_icon("logout", 18) }} Log out</a>
+      {% endif %}
     </div>
   </details>
 {% endmacro %}
@@ -148,7 +161,6 @@
   <header class="mobile-bar">
     <button type="button" class="icon-btn" id="sideOpen" aria-controls="sidebar" aria-expanded="false" aria-label="Open menu">{{ ui_icon("menu", 22) }}</button>
     {{ brand() }}
-    {{ profile_menu(with_nav=false) }}
   </header>
   <div class="side-scrim" id="sideScrim" hidden></div>
 
@@ -181,13 +193,7 @@
     </nav>
 
     <div class="side-bottom">
-      {# One row like the other menu items: icon, label, and a simple on/off switch (the whole row is clickable) #}
-      <button type="button" class="side-link side-theme" data-theme-toggle role="switch" aria-checked="false">
-        <span class="theme-ic theme-ic-light">{{ ui_icon("sun", 20) }}</span><span class="theme-ic theme-ic-dark">{{ ui_icon("moon", 20) }}</span>
-        <span class="theme-label-light">Light mode</span><span class="theme-label-dark">Dark mode</span>
-        <span class="ts-track" aria-hidden="true"><span class="ts-knob"></span></span>
-      </button>
-      <a href="{{ url_for('logout') }}" class="side-link side-logout">{{ ui_icon("logout", 20) }}<span>Log out</span></a>
+      {{ profile_menu(with_nav=false, in_sidebar=true) }}
     </div>
   </aside>
 {% else %}
@@ -209,12 +215,6 @@
   </header>
 {% endif %}
 
-  {% if with_sidebar %}
-    <header class="topbar">
-      <p class="topbar-title">{{ self.title().split(' · ')[0] }}</p>
-      {{ profile_menu(with_nav=false) }}
-    </header>
-  {% endif %}
   <main class="container {% block main_class %}{% endblock %}">
     {% with messages = get_flashed_messages() %}
       {% for m in messages %}

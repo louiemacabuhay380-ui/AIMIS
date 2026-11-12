@@ -37,7 +37,6 @@
         {% endfor %}
       </div>
     </div>
-    <div class="dash-hero-bot">{{ robot("happy") }}</div>
   </section>
 
   {# ---- Progress in plain words, and what to work on next ---- #}
@@ -74,7 +73,7 @@
 
 
   {# ---- Your interview skills (wide tile) ---- #}
-  <section class="tile tile-skills skills-card">
+  <section class="tile tile-skills skills-card{{ ' is-empty' if not skills }}">
     <div class="tile-head card-head">
       <h2>Your interview skills</h2>
       {% if stats %}
@@ -262,7 +261,7 @@
           ({{ weak_skill.times }} answer{{ 's' if weak_skill.times != 1 }}). Ask AIMIS Coach where.</p>
       {% endif %}
     {% else %}
-      <p class="focus-tip">After your first interview, AIMIS will tell you the one thing to improve first.</p>
+      <p class="focus-tip">{% if stats %}After your next scored interview, AIMIS will tell you the one skill to improve first.{% else %}After your first interview, AIMIS will tell you the one thing to improve first.{% endif %}</p>
       <p class="muted small">Tip: answer with a real example. Say what happened, what you did, and how it ended.</p>
     {% endif %}
   </section>
