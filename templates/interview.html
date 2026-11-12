@@ -99,6 +99,10 @@
       <video id="selfView" autoplay muted playsinline></video>
       <span class="cam-label">You</span>
       <span class="face-status" id="faceStatus" aria-live="polite">Starting your camera...</span>
+      <div class="cam-paused" id="camPaused" hidden>
+        <b>Body language check paused</b>
+        <span>Nothing is measured while AIMIS Bot thinks about your answer. Relax for a moment.</span>
+      </div>
     </div>
   </div>
 
@@ -254,7 +258,7 @@ function publish(result) {
   window.dispatchEvent(new CustomEvent("facecheck", { detail: status }));
 }
 function checkFace() {                   // runs when not recording (recording uses analyzeFrame)
-  if (!face || window.behavior.active || video.readyState < 2) return;
+  if (!face || window.behavior.active || window.behavior.paused || video.readyState < 2) return;
   const now = nextTimestamp();
   const f = face.detectForVideo(video, now);
   const h = hands.detectForVideo(video, now);
@@ -772,6 +776,27 @@ function setState(newState) {
   recLabel.textContent = { idle: "Ready", asking: "Asking", recording: "Rec", saving: adaptive ? "Thinking" : "Saving",
                            error: "Paused", finished: "Done" }[state];
   setMood(MOOD_FOR_STATE[state] || "neutral");
+  pauseCameraCheck(state === "saving" || state === "finished");
+}
+
+// While AIMIS Bot processes an answer (and after the interview), the camera isn't analyzed at all:
+// body language only counts while the student is answering, and the face-check warnings stop too.
+function pauseCameraCheck(paused) {
+  const box = document.getElementById("camBox"), badge = document.getElementById("faceStatus");
+  const note = document.getElementById("camPaused");
+  if (!box || !window.behavior || !!window.behavior.paused === paused) return;
+  window.behavior.paused = paused;
+  box.classList.toggle("is-paused", paused);
+  note.hidden = !paused;
+  if (paused) {
+    box.dataset.face = "paused";
+    badge.textContent = "Paused";
+    badge.title = "Body language isn't measured while AIMIS Bot is thinking.";
+  } else {
+    lastFaceCode = "";                  // show the real camera status again on the next check
+    badge.textContent = "Checking...";
+    badge.title = "";
+  }
 }
 function updateProgress() {
   progressText.textContent = `Question ${current.number} of ${total}` + (current.followUp ? " · follow-up" : "");

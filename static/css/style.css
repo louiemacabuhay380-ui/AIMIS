@@ -2842,3 +2842,12 @@ body.has-sidebar > .container { padding-top: 24px; }
 
 body.has-sidebar > .container { padding-top: 28px; }
 .side-profile.is-current summary { background: var(--side-active); }
+
+/* Camera paused while AIMIS Bot thinks: dimmed video, gray frame, a short note (nothing is measured) */
+.cam-box-live.is-paused video { filter: grayscale(0.7) brightness(0.55); transition: filter 0.3s; }
+.cam-box-live[data-face="paused"]::after { box-shadow: inset 0 0 0 3px #94a3b8; }
+.cam-paused { position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); width: min(88%, 420px);
+              display: flex; flex-direction: column; gap: 4px; padding: 12px 16px; border-radius: 14px; text-align: center;
+              color: #fff; background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(6px); font-size: 14px; line-height: 1.4; }
+.cam-paused[hidden] { display: none; }
+.cam-paused b { font-size: 15px; }
