@@ -2839,3 +2839,5 @@ body.has-sidebar > .container { padding-top: 28px; }
           background: var(--surface); border-bottom: 1px solid var(--border); }
 body.has-sidebar > .container { padding-top: 24px; }
 @media (max-width: 1023px) { .topbar { display: none; } }
+
+body.has-sidebar > .container { padding-top: 28px; }

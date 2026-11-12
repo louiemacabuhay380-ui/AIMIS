@@ -871,9 +871,14 @@ SKILL_TIPS = {
 
 def skill_breakdown(cursor, user_id, last_n=5):
     """Average each skill over the user's last few scored interviews (0-100)."""
+    # Only interviews that still have their answers' measurements (an interview whose answers were deleted
+    # or never saved would otherwise leave the rings empty)
     cursor.execute("""SELECT i.interview_id FROM interviews i
                       JOIN evaluations e ON e.interview_id = i.interview_id
                       WHERE i.user_id = %s AND i.status = 'completed'
+                        AND EXISTS (SELECT 1 FROM interview_questions iq
+                                    JOIN responses r ON r.interview_question_id = iq.interview_question_id
+                                    WHERE iq.interview_id = i.interview_id)
                       ORDER BY i.completed_at DESC LIMIT %s""", (user_id, last_n))
     ids = [row["interview_id"] for row in cursor.fetchall()]
     if not ids:

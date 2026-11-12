@@ -215,10 +215,6 @@
   </header>
 {% endif %}
 
-  {% if with_sidebar %}
-    {# Empty header bar across the top (the profile is in the sidebar) #}
-    <header class="topbar" aria-hidden="true"></header>
-  {% endif %}
   <main class="container {% block main_class %}{% endblock %}">
     {% with messages = get_flashed_messages() %}
       {% for m in messages %}
