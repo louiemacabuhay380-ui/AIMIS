@@ -1,28 +1,50 @@
 # AIMIS panel revisions: system changes (comments 5, 6, 8, 10, 11, 12)
 
-## How to install
+## How to install (SQLite: no XAMPP)
 
-1. **Back up first.** Copy your whole AIMIS folder and export the database in SQLyog.
-2. Copy every file from this package into your AIMIS folder, replacing the old ones.
-   New files: `scoring.py`, `careers.py`, `templates/career.html`, `database/block10_panel_revisions.sql`.
-3. Update the database (pick one):
-   - `python check_setup.py --fix`, or
-   - run `database/block10_panel_revisions.sql` in SQLyog.
-4. Run `python app.py` as usual. No new packages are needed.
+AIMIS now uses **SQLite** instead of XAMPP / MySQL (adviser's request). The whole database is one file, `aimis.db`,
+in the AIMIS folder. Python already includes SQLite, so there is nothing else to install or start.
 
-**Existing students:** the next time they log in, AIMIS asks for their career goal.
+1. **Back up first.** Copy your whole AIMIS folder.
+2. Copy every file from this package into your AIMIS folder, replacing the old ones. Delete the old
+   `templates/career.html` if it is still there.
+3. In the AIMIS folder (venv on): `pip install -r requirements.txt`
+4. Choose one:
+   - **Keep your current data** (accounts, interviews, scores): start MySQL in XAMPP one last time, then run
+     `python migrate_from_mysql.py`. It copies everything into `aimis.db`. After that you can close XAMPP for good.
+   - **Start fresh** (groupmates): do nothing. `aimis.db` is created by itself the first time AIMIS starts, with the
+     250 approved questions and the admin account `admin12345@gmail.com`.
+5. `python check_setup.py` (all database lines should be [OK]), then `python app.py`.
+
+Useful commands: `python db.py info` (rows per table), `python db.py make-admin you@email.com`,
+`python db.py reset` (backs up and starts an empty database). To look inside the database, use
+DB Browser for SQLite instead of SQLyog.
+
+**Never push `aimis.db` to GitHub** (it has students' personal data; it is in `.gitignore`). Each groupmate has
+their own `aimis.db`, so nobody sees anyone else's records, which also fixes the "same interview report on my
+groupmate's PC" problem.
+
+**Existing students:** the next time they log in, AIMIS asks for their profile and consent.
 **Old reports:** they still open and show the old scores. Each one has a "Re-score with the new rubric" button,
 which uses 1 Gemini request and does not record the answers again.
 
-**Database warning:** the backup `aimisbackup.sql` has 85 `behavior_analysis` rows and 84 `nlp_analysis` rows that
-belong to answers that no longer exist (response IDs 52–136). If you restore that backup on another PC, saving a new
-answer crashes with "Duplicate entry ... for key uq_behavior_response". This also happens with the old code.
-Fix after restoring (deletes only the orphaned rows):
+## Adviser's layout comments
 
-```sql
-DELETE b FROM behavior_analysis b LEFT JOIN responses r ON r.response_id = b.response_id WHERE r.response_id IS NULL;
-DELETE n FROM nlp_analysis n LEFT JOIN responses r ON r.response_id = n.response_id WHERE r.response_id IS NULL;
-```
+| Comment | What changed |
+|---|---|
+| Modal / pop-up form | The career goal is now a pop-up form on the dashboard (no separate page). It opens by itself until the student picks a job, and from **Target job** in the sidebar or **Change** on the dashboard and start page. |
+| Onboarding first, not the goal right away | The onboarding is now a short "get to know you" form in 3 steps: **About you** (age, course, what you are now, year level), **Your goal** (the job you want to pursue), **Your experience** (work experience, real interviews before, confidence on a 4-point scale with no neutral, and up to 3 things to improve). The live interviewer uses this background only to fit its questions to the student (e.g. a 4th-year IT student with OJT who has never had a real interview); it is never sent to the scoring step. Students can change it later on **My profile**. "How AIMIS works" is a separate page in the sidebar. |
+| Login → onboarding → consent → dashboard | Students follow this order on their first login (existing students too, once). The data privacy consent (RA 10173) is its own page, given once for all interviews (it also covers the profile), instead of a checkbox on every start page. It can be reviewed or withdrawn under **Privacy & consent**. |
+| Light mode by default | AIMIS always opens in light mode. The login, register and password pages are light only (no switch). After logging in, the student can switch to dark mode in the sidebar, and the choice is remembered. |
+| Colors: no purple, light blue for trust | All purple and indigo colors were replaced with light blue and blue (welcome banner, accents, button text). |
+| Redundant logo on login | The big logo inside the login and register cards was removed; the logo stays only at the top left. |
+| Dashboard too compact / looks like an admin dashboard | The student home page is roomier and friendlier: a welcome banner with one big Start button and the target job, "Your progress" in plain words, "Work on next", bigger skill cards, the skill rings, and recent interviews. |
+| Onboarding: less scrolling, no switch or logout | The onboarding steps and the consent page use the full width (e.g. job cards in 4 columns, two experience questions side by side, consent text on the right and the agree box on the left), so each step fits on one screen at 1366×768 and up. These pages show only the logo, always in light mode; the dark mode switch and Log out are only in the dashboard sidebar. |
+| Sidebar only on the home page | The sidebar now shows only on the student's home page (and on the admin panel, which is the admin's dashboard). Every other page (report, history, start interview, profile...) has a top bar with the logo, a **Home** link and the profile menu at the top right (Home, Interview history, My profile, Target job, Privacy & consent, My data). The dark mode switch and Log out stay in the home page sidebar. |
+| No gradient colors; less scrolling on the home page | The welcome banner is solid light blue (no gradient). The home page is one screen at 1920×1080: welcome banner with the Start button, target job and quick skill shortcuts, Your progress, Your interview skills, Work on next, and a short Recent interviews list (the full list is on Interview history). |
+| Profile at the top right | The student's avatar, name and target job are at the top right of every page. It opens a menu: My profile, Target job, Privacy & consent, My data. |
+| Dead space in interview history | History is now cards in a grid (score, Answer and Delivery bars, one button), with its own **Interview history** page and filters (All / Completed / Unfinished). |
+| Sidebar, logout at the very bottom | The home page has a left sidebar with the pages (Home, Start interview, Interview history, How AIMIS works; admins see the admin sections). Account items (My profile, Target job, Privacy & consent, My data) are only in the profile menu at the top right, so nothing is listed twice. Dark mode and **Log out** are at the bottom. On phones it opens with the menu button. The interview room itself has no sidebar, so students don't leave by accident. |
 
 ## What changed, by panel comment
 
@@ -49,12 +71,22 @@ There is **no question list prepared before the interview**. It runs like a real
    - transcribes the answer and rates fluency and clarity,
    - writes a short reply that shows the robot listened ("Nice to meet you, Juan. So you did your OJT in IT
      support."), with no grading,
-   - decides what comes next. That is either **one follow-up** about this answer (only when it was vague, had no
-     real example, or no result), or the **next main question**. The next question is written from the
-     conversation so far, the target job, the skill and the level, and it never repeats an earlier question.
+   - decides what comes next. If the answer has **substance** (a real situation, something the student did, a
+     decision with reasons, a result or a lesson), it asks a **follow-up** that digs deeper into one specific thing
+     they said. If the answer has **no substance** (empty, off-topic, "I don't know", only general claims), it does
+     not follow up and **moves on to the next main question**, written from the conversation so far, the target
+     job, the skill and the level, without repeating an earlier question.
+   The AI also states its decision (`substance: true/false`), and AIMIS enforces it: no follow-up is ever asked on an
+   answer without substance. When it moves on, the reply adds a short bridge ("Thanks, Ana, that gives me a good
+   picture of your OJT. Let's talk about working under pressure."), and the next question builds on what the
+   student already said when possible ("Since you handled walk-in clients during your OJT, tell me about a time a
+   client was upset with you."). The terminal shows each decision, e.g.
+   `[AIMIS Bot] the answer has substance: follow-up question written live` or
+   `[AIMIS Bot] the answer has no substance to dig into: moving on, next question written live from the conversation`.
 3. The robot asks it out loud, and the conversation continues until the chosen number of main questions
-   (including the introduction) is reached. Follow-ups don't count toward that number. There is no follow-up on
-   the introduction, and a follow-up never gets its own follow-up.
+   (including the introduction) is reached. Follow-ups don't count toward that number. Each main question can get
+   up to 2 follow-ups (`MAX_FOLLOW_UPS` in `.env`) and the introduction up to 1, so the interview keeps a
+   predictable length.
 
 Notes:
 - It uses the same number of Gemini calls as before. Before, each answer was transcribed after the interview;

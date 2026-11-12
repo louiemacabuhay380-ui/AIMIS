@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_icons.html" import ui_icon %}
+{% from "_profile_fields.html" import about_you, your_goal, experience, form_script with context %}
+{% block title %}My profile · AIMIS{% endblock %}
+
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>My profile</h1>
+    <p>AIMIS Bot uses this to fit your interview questions to you. It never affects your scores.</p>
+  </div>
+</div>
+
+<form method="POST" class="profile-form">
+  <section class="card profile-section">
+    <h2>{{ ui_icon("users", 20) }} About you</h2>
+    {{ about_you(p, opts, with_name=true) }}
+  </section>
+  <section class="card profile-section">
+    <h2>{{ ui_icon("briefcase", 20) }} The job you want to pursue</h2>
+    {{ your_goal(p, career_other_text) }}
+    <p class="muted small">Changing it affects your next interviews. Past reports keep the job they were for.</p>
+  </section>
+  <section class="card profile-section">
+    <h2>{{ ui_icon("history", 20) }} Your experience</h2>
+    {{ experience(p, opts) }}
+  </section>
+  <div class="profile-actions">
+    <button type="submit" class="btn btn-lg">Save profile</button>
+    <a href="{{ url_for('dashboard') }}" class="btn btn-outline btn-lg">Cancel</a>
+  </div>
+</form>
+
+{{ form_script() }}
+{% endblock %}

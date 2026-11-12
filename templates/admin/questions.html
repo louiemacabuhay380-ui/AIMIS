@@ -14,7 +14,7 @@
 {% if not ready %}
   <div class="card notice">
     <h2>One database update is needed</h2>
-    <p class="muted">Run <b>block 6</b> of <code>database/schema_updates.sql</code> in SQLyog, then reload this page.</p>
+    <p class="muted">Run <code>python check_setup.py --fix</code>, then reload this page.</p>
   </div>
 {% else %}
 

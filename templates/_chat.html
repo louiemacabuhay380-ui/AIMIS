@@ -178,6 +178,10 @@
       body: JSON.stringify({message: text, interview_id: interviewId})
     }).then(function (res) {
       if (!res.ok) return res.json().then(function (d) { throw new Error(d.error || "Something went wrong."); });
+      // Account requests ("change my name to ...") come back as JSON, with Confirm / Cancel buttons
+      if ((res.headers.get("Content-Type") || "").indexOf("application/json") === 0) {
+        return res.json().then(function (d) { showAccountReply(bot, d); });
+      }
       let sources = [];
       try { sources = JSON.parse(res.headers.get("X-Chat-Sources") || "[]"); } catch (e) {}
       const reader = res.body.getReader();
@@ -205,6 +209,46 @@
       bot.classList.add("error");
       bot.textContent = err.message || "Couldn't reach the server.";
     }).finally(function () { clearTimeout(slow); busy = false; send.disabled = false; input.focus(); });
+  }
+
+  // ---- account requests: the change is saved only after the student presses Confirm
+  function showAccountReply(bot, d) {
+    bot.classList.remove("typing");
+    bot.innerHTML = render(d.text || "");
+    if (d.link) {
+      const a = document.createElement("a");
+      a.className = "btn btn-sm coach-action-link";
+      a.href = d.link.url; a.textContent = d.link.label;
+      bot.appendChild(a);
+    }
+    if (d.action_id) {
+      const row = document.createElement("div");
+      row.className = "coach-confirm";
+      [["confirm", "Confirm", "btn btn-sm"], ["cancel", "Cancel", "btn btn-sm btn-outline"]].forEach(function (b) {
+        const btn = document.createElement("button");
+        btn.type = "button"; btn.className = b[2]; btn.textContent = b[1];
+        btn.addEventListener("click", function () { decide(row, d.action_id, b[0]); });
+        row.appendChild(btn);
+      });
+      bot.appendChild(row);
+    }
+    body.scrollTop = body.scrollHeight;
+  }
+  function decide(row, actionId, decision) {
+    row.querySelectorAll("button").forEach(function (b) { b.disabled = true; });
+    fetch("{{ url_for('chat_action') }}", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action_id: actionId, decision: decision, interview_id: interviewId})
+    }).then(function (r) { return r.json(); }).then(function (d) {
+      row.remove();
+      addMessage("bot", d.text || d.error || "Something went wrong.");
+      if (d.changed && d.kind === "name") {            // show the new name in the page header right away
+        document.querySelectorAll("[data-user-name]").forEach(function (el) { el.textContent = d.value; });
+      }
+    }).catch(function () {
+      row.querySelectorAll("button").forEach(function (b) { b.disabled = false; });
+      addMessage("bot", "Couldn't reach the server. Try again.");
+    });
   }
 
   form.addEventListener("submit", function (e) { e.preventDefault(); ask(input.value); });

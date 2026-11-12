@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% from "_history_card.html" import history_card with context %}
+{% from "_icons.html" import ui_icon %}
+{% block title %}Interview history · AIMIS{% endblock %}
+
+{% block content %}
+<div class="page-head page-head-row">
+  <div>
+    <h1>Interview history</h1>
+    <p>Open an interview to see your answers, scores and feedback.</p>
+  </div>
+  <a href="{{ url_for('start_interview') }}" class="btn btn-lg">{{ ui_icon("play", 16) }} New interview</a>
+</div>
+
+<nav class="filter-tabs" aria-label="Show">
+  {% for key, label in [("all", "All"), ("completed", "Completed"), ("unfinished", "Unfinished")] %}
+    <a href="{{ url_for('interview_history', show=key) }}" class="{{ 'active' if show == key }}"
+       {{ 'aria-current=page' if show == key }}>{{ label }} <span>{{ counts[key] }}</span></a>
+  {% endfor %}
+</nav>
+
+{% if interviews %}
+  {% set PER_PAGE = 9 %}
+  {% set pages = ((interviews | length) + PER_PAGE - 1) // PER_PAGE %}
+  <div class="h-grid" id="historyGrid">
+    {% for i in interviews %}
+      <div class="h-cell" data-page="{{ (loop.index0 // PER_PAGE) + 1 }}"{{ ' hidden' if loop.index > PER_PAGE }}>{{ history_card(i) }}</div>
+    {% endfor %}
+  </div>
+  {% if pages > 1 %}
+    <nav class="pager" id="historyPager" aria-label="Interview history pages" data-pages="{{ pages }}">
+      <button type="button" class="page-btn page-nav" data-go="prev" disabled>Prev</button>
+      <span class="page-nums"></span>
+      <button type="button" class="page-btn page-nav page-next" data-go="next">Next</button>
+    </nav>
+    <script>
+      (function () {
+        var pager = document.getElementById("historyPager"), nums = pager.querySelector(".page-nums");
+        var cells = document.querySelectorAll("#historyGrid .h-cell"), total = +pager.dataset.pages, current = 1;
+        function show(page) {
+          current = Math.max(1, Math.min(total, page));
+          cells.forEach(function (c) { c.hidden = +c.dataset.page !== current; });
+          nums.innerHTML = "";
+          for (var p = 1; p <= total; p++) {
+            if (total > 7 && p > 1 && p < total && Math.abs(p - current) > 1) {
+              if (!nums.lastChild || nums.lastChild.className !== "page-gap") {
+                var gap = document.createElement("span"); gap.className = "page-gap"; gap.textContent = "…"; nums.appendChild(gap);
+              }
+              continue;
+            }
+            var b = document.createElement("button");
+            b.type = "button"; b.className = "page-btn" + (p === current ? " active" : "");
+            b.textContent = p; b.dataset.go = p;
+            if (p === current) b.setAttribute("aria-current", "page");
+            nums.appendChild(b);
+          }
+          pager.querySelector('[data-go="prev"]').disabled = current === 1;
+          pager.querySelector('[data-go="next"]').disabled = current === total;
+        }
+        pager.addEventListener("click", function (e) {
+          var go = e.target.dataset && e.target.dataset.go;
+          if (!go) return;
+          show(go === "prev" ? current - 1 : go === "next" ? current + 1 : +go);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+        show(1);
+      })();
+    </script>
+  {% endif %}
+{% else %}
+  <div class="card empty-state empty-big">
+    <p><b>{{ 'No interviews yet.' if show == 'all' else 'Nothing here.' }}</b><br>
+      {% if show == 'all' %}Start your first mock interview to get feedback on your answers, voice, and body language.{% else %}No {{ show }} interviews.{% endif %}</p>
+    <a href="{{ url_for('start_interview') }}" class="btn">Start an interview</a>
+  </div>
+{% endif %}
+
+{% from "_chat.html" import chat_widget %}
+{{ chat_widget() }}
+{% endblock %}

@@ -1,16 +1,14 @@
 """One-time script: encrypts old .wav recordings and updates their paths in the database."""
 import os
 from dotenv import load_dotenv
-import mysql.connector
+import db
 from cryptography.fernet import Fernet
 
 load_dotenv()
 fernet = Fernet(os.getenv("AUDIO_ENCRYPTION_KEY").encode())
 audio_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "uploads", "audio")
 
-conn = mysql.connector.connect(
-    host=os.getenv("DB_HOST"), user=os.getenv("DB_USER"),
-    password=os.getenv("DB_PASSWORD"), database=os.getenv("DB_NAME"))
+conn = db.get_db()
 cursor = conn.cursor()
 
 for name in os.listdir(audio_dir):
@@ -28,4 +26,4 @@ for name in os.listdir(audio_dir):
     print("Encrypted", name)
 
 conn.close()
-print("Done.")
+print("Done.")

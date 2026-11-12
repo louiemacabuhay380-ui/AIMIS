@@ -2,6 +2,8 @@
 
     python check_setup.py          only checks, changes nothing
     python check_setup.py --fix    also adds missing database tables and columns (safe: never deletes data)
+
+The database is SQLite (the file aimis.db): no XAMPP / MySQL needed.
     python check_setup.py --gemini also sends one tiny test request to Gemini (uses 1 request of your quota)
 """
 import os
@@ -36,7 +38,7 @@ def fail(msg, fix=None):
 
 # ---------------------------------------------------------------- 1. Python packages
 print("\n1. Python packages")
-PACKAGES = [("flask", "flask"), ("dotenv", "python-dotenv"), ("mysql.connector", "mysql-connector-python"),
+PACKAGES = [("flask", "flask"), ("dotenv", "python-dotenv"),
             ("google.genai", "google-genai"), ("cryptography", "cryptography"), ("numpy", "numpy"),
             ("librosa", "librosa"), ("nltk", "nltk"), ("itsdangerous", "itsdangerous")]
 for module, pip_name in PACKAGES:
@@ -63,13 +65,11 @@ except Exception as e:
 print("\n2. .env settings")
 if not os.path.exists(os.path.join(HERE, ".env")):
     fail(".env file is missing", "copy .env.example to .env and fill it in")
-for key in ("SECRET_KEY", "DB_HOST", "DB_USER", "DB_NAME", "GEMINI_API_KEY", "AUDIO_ENCRYPTION_KEY"):
+for key in ("SECRET_KEY", "GEMINI_API_KEY", "AUDIO_ENCRYPTION_KEY"):
     if os.getenv(key):
         ok(key)
     else:
         fail(f"{key} is empty or missing in .env", "see .env.example")
-if os.getenv("DB_PASSWORD") is None:
-    warn("DB_PASSWORD is not set (fine only if your MySQL root has no password)")
 key = os.getenv("AUDIO_ENCRYPTION_KEY")
 if key:
     try:
@@ -93,7 +93,12 @@ print("\n3. Database")
 DEC = "DECIMAL(5,2) NULL"
 SCHEMA = {
     "users": {"user_id": None, "full_name": None, "email": None, "password": None, "role": None,
-              "is_active": "TINYINT(1) NOT NULL DEFAULT 1", "career_goal": "VARCHAR(80) NULL"},
+              "is_active": "TINYINT(1) NOT NULL DEFAULT 1", "career_goal": "VARCHAR(80) NULL",
+              "onboarded_at": "DATETIME NULL", "consent_version": "VARCHAR(10) NULL", "consent_at": "DATETIME NULL",
+              "age": "TINYINT NULL", "education_status": "VARCHAR(40) NULL", "course": "VARCHAR(100) NULL",
+              "year_level": "VARCHAR(20) NULL", "work_experience": "VARCHAR(20) NULL",
+              "interview_experience": "VARCHAR(20) NULL", "interview_confidence": "TINYINT NULL",
+              "focus_areas": "VARCHAR(255) NULL"},
     "interviews": {"interview_id": None, "user_id": None, "category": None, "difficulty": None,
                    "number_of_questions": None, "status": None, "started_at": None, "completed_at": None,
                    "overall_score": None, "career_goal": "VARCHAR(80) NULL"},
@@ -125,68 +130,38 @@ SCHEMA = {
                     "delivery_score": DEC, "performance_profile": "VARCHAR(20) NULL", "rubric_version": "VARCHAR(10) NULL"},
     "feedback": {"interview_id": None, "strengths": None, "areas_to_improve": None, "recommendations": None},
 }
-# New tables, created whole by --fix (same as the SQL files in database/, kept here so no file is needed)
-NEW_TABLES = {
-    "answer_feedback": """CREATE TABLE IF NOT EXISTS answer_feedback (
-        response_id INT PRIMARY KEY, feedback TEXT, weak_quote TEXT, better_answer TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)""",
-    "skill_labels": """CREATE TABLE IF NOT EXISTS skill_labels (
-        label_id INT AUTO_INCREMENT PRIMARY KEY, response_id INT NOT NULL, skill VARCHAR(40) NOT NULL,
-        rating VARCHAR(10) NOT NULL, reason VARCHAR(300),
-        INDEX idx_label_response (response_id), INDEX idx_label_skill (skill))""",
-    "rag_chunks": """CREATE TABLE IF NOT EXISTS rag_chunks (
-        chunk_id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, interview_id INT NOT NULL,
-        response_id INT NULL, question_order INT NULL, kind VARCHAR(20) NOT NULL, content TEXT NOT NULL,
-        embedding MEDIUMTEXT NULL, embed_model VARCHAR(80) NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_chunk_user (user_id), INDEX idx_chunk_interview (interview_id))""",
-    "chat_messages": """CREATE TABLE IF NOT EXISTS chat_messages (
-        message_id INT AUTO_INCREMENT PRIMARY KEY, user_id INT NOT NULL, interview_id INT NULL,
-        role VARCHAR(10) NOT NULL, content TEXT NOT NULL, sources TEXT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, INDEX idx_chat_user (user_id))""",
-    "feedback_items": """CREATE TABLE IF NOT EXISTS feedback_items (
-        item_id INT AUTO_INCREMENT PRIMARY KEY, interview_id INT NOT NULL, kind VARCHAR(12) NOT NULL,
-        answer_no INT NULL, point TEXT, quote TEXT, fix TEXT, example TEXT, sort_order INT NOT NULL DEFAULT 0,
-        INDEX idx_item_interview (interview_id))""",
-    "human_ratings": """CREATE TABLE IF NOT EXISTS human_ratings (
-        rating_id INT AUTO_INCREMENT PRIMARY KEY, response_id INT NOT NULL, rater_id INT NOT NULL,
-        relevance TINYINT NOT NULL, clarity TINYINT NULL, completeness TINYINT NOT NULL, grammar TINYINT NOT NULL,
-        directness TINYINT NULL, specificity TINYINT NULL,
-        comment VARCHAR(500) NULL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE KEY uq_rating (response_id, rater_id), INDEX idx_rating_rater (rater_id))""",
-}
 
-
+sys.path.insert(0, HERE)
+import db
+path = db.db_path()
 try:
-    import mysql.connector
-    conn = mysql.connector.connect(host=os.getenv("DB_HOST"), user=os.getenv("DB_USER"),
-                                   password=os.getenv("DB_PASSWORD"), database=os.getenv("DB_NAME"),
-                                   buffered=True, connection_timeout=5)
-    ok(f"Connected to MySQL database '{os.getenv('DB_NAME')}'")
+    created = db.init(path)
+    conn = db.get_db()
+    ok(("Created the SQLite database " if created else "SQLite database ") + path + " (no XAMPP needed)")
 except Exception as e:
     conn = None
-    fail(f"Can't connect to MySQL: {e}",
-         "start MySQL (XAMPP/Services), and check DB_HOST, DB_USER, DB_PASSWORD, DB_NAME in .env")
+    fail(f"Can't open the SQLite database {path}: {e}",
+         "check that the AIMIS folder isn't read-only, or set DB_PATH in .env to another file")
 
 if conn:
     cursor = conn.cursor()
-    cursor.execute("""SELECT TABLE_NAME, COLUMN_NAME, IS_NULLABLE, DATA_TYPE FROM INFORMATION_SCHEMA.COLUMNS
-                      WHERE TABLE_SCHEMA = DATABASE()""")
     existing = {}
-    for table, column, nullable, dtype in cursor.fetchall():
-        existing.setdefault(table.lower(), {})[column.lower()] = (nullable, dtype)
+    cursor.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+    for (table,) in cursor.fetchall():
+        cursor.execute(f"PRAGMA table_info({table})")
+        existing[table.lower()] = {r[1].lower() for r in cursor.fetchall()}
 
     changed = False
     for table, columns in SCHEMA.items():
         if table not in existing:
-            fail(f"Table '{table}' is missing (part of the original AIMIS database)",
-                 "import the group's original AIMIS database first")
+            fail(f"Table '{table}' is missing", "run: python db.py init")
             continue
         missing = [c for c in columns if c not in existing[table]]
-        base_missing = [c for c in missing if columns[c] is None]
         addable = [c for c in missing if columns[c] is not None]
+        base_missing = [c for c in missing if columns[c] is None]
         if base_missing:
-            fail(f"{table} is missing original columns: {', '.join(base_missing)}",
-                 "this database doesn't match AIMIS; import the group's original database")
+            fail(f"{table} is missing columns: {', '.join(base_missing)}",
+                 "this aimis.db is damaged; rename it and run: python db.py init")
         if addable and FIX:
             for c in addable:
                 cursor.execute(f"ALTER TABLE {table} ADD COLUMN {c} {columns[c]}")
@@ -196,51 +171,11 @@ if conn:
             fail(f"{table} is missing: {', '.join(addable)}", "run: python check_setup.py --fix")
         elif not base_missing:
             ok(table)
-
-    # Old columns that make inserts fail
-    behavior = existing.get("behavior_analysis", {})
-    old_fixes = []
-    if "posture_score" in behavior and behavior["posture_score"][0] == "NO":
-        old_fixes.append(("behavior_analysis.posture_score must allow empty values (posture was removed)",
-                          "ALTER TABLE behavior_analysis MODIFY posture_score DECIMAL(5,2) NULL"))
-    for c in ("eye_contact_score", "face_visibility_score"):
-        if c in behavior and behavior[c][0] == "NO":
-            old_fixes.append((f"behavior_analysis.{c} must allow empty values (no camera)",
-                              f"ALTER TABLE behavior_analysis MODIFY {c} DECIMAL(5,2) NULL"))
-    if existing.get("users", {}).get("role", ("", ""))[1] == "enum":
-        old_fixes.append(("users.role can't hold 'admin'/'rater' (it is a fixed list)",
-                          "ALTER TABLE users MODIFY role VARCHAR(20) NOT NULL DEFAULT 'student'"))
-    for msg, sql in old_fixes:
-        if FIX:
-            cursor.execute(sql)
-            changed = True
-            ok("fixed: " + msg)
-        else:
-            fail(msg, "run: python check_setup.py --fix")
-
-    for table, create_sql in NEW_TABLES.items():
+    for table in ("answer_feedback", "skill_labels", "rag_chunks", "chat_messages", "feedback_items", "human_ratings"):
         if table in existing:
             ok(table)
-        elif FIX:
-            cursor.execute(create_sql)
-            existing[table] = {}
-            changed = True
-            ok(f"{table}: created")
         else:
-            fail(f"Table '{table}' is missing", "run: python check_setup.py --fix")
-    # Rubric v2 columns on the evaluators' table (block 10)
-    ratings = existing.get("human_ratings")
-    if ratings:
-        todo = [f"ADD COLUMN {c} TINYINT NULL" for c in ("directness", "specificity") if c not in ratings]
-        if ratings.get("clarity", ("YES", ""))[0] == "NO":
-            todo.append("MODIFY clarity TINYINT NULL")
-        if todo and FIX:
-            for change in todo:
-                cursor.execute(f"ALTER TABLE human_ratings {change}")
-            changed = True
-            ok("human_ratings: updated for rubric v2")
-        elif todo:
-            fail("human_ratings needs the rubric v2 columns (block 10)", "run: python check_setup.py --fix")
+            fail(f"Table '{table}' is missing", "run: python db.py init")
     if changed:
         conn.commit()
 
@@ -250,8 +185,7 @@ if conn:
         if cursor.fetchone()[0]:
             ok("At least one admin account exists")
         else:
-            warn("No admin account yet",
-                 "in SQLyog: UPDATE users SET role = 'admin' WHERE email = 'your@email.com';")
+            warn("No admin account yet", "register, then run: python db.py make-admin your@email.com")
         cursor.execute("""SELECT category, difficulty, COUNT(*) FROM question_bank WHERE is_active = 1
                           GROUP BY category, difficulty""")
         rows = cursor.fetchall()
@@ -300,7 +234,7 @@ else:
 if os.path.exists(os.path.join(HERE, ".gitignore")):
     with open(os.path.join(HERE, ".gitignore"), encoding="utf-8") as f:
         ignored = f.read()
-    for item in (".env", "uploads"):
+    for item in (".env", "uploads", "aimis.db"):
         if item in ignored:
             ok(f"{item} is excluded from GitHub")
         else:

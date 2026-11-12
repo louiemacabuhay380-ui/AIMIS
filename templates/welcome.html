@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% from "_robot.html" import robot %}
+{% from "_icons.html" import ui_icon %}
+{% from "_profile_fields.html" import about_you, your_goal, experience, form_script with context %}
+{% block title %}Welcome to AIMIS{% endblock %}
+{% block layout %}focus{% endblock %}
+
+{% block content %}
+{# Onboarding (adviser's flow: log in -> get to know the student -> consent -> dashboard).
+   Without JavaScript all three parts show at once. #}
+{% set first = (session.full_name or '').split(' ')[0] %}
+<div class="onboard">
+  <ol class="setup-steps" id="setupSteps" aria-label="Account setup">
+    <li class="current"><span>1</span>About you</li>
+    <li><span>2</span>Your goal</li>
+    <li><span>3</span>Your experience</li>
+    <li><span>4</span>Privacy consent</li>
+  </ol>
+
+  <form method="POST" class="card onboard-card kyc-card" id="onboard" novalidate>
+    <div class="onboard-bot">
+      {{ robot("happy") }}
+      <div class="speech speech-up" id="onboardSpeech">Hi{% if first %}, {{ first }}{% endif %}! I'm AIMIS Bot. Let me get to know you first.</div>
+    </div>
+
+    <div class="onboard-slides">
+      <section class="onboard-slide" data-say="Hi{% if first %}, {{ first }}{% endif %}! I'm AIMIS Bot. Let me get to know you first.">
+        <p class="room-kicker">Step 1 of 3 · About you</p>
+        <h1>Welcome to AIMIS{% if first %}, {{ first }}{% endif %}!</h1>
+        <p class="onboard-lead">AIMIS is an AI mock interview system. I'll interview you out loud for the job you want and
+          tell you how to improve. A few questions first, so the interview fits you.</p>
+        {{ about_you(p, opts) }}
+      </section>
+
+      <section class="onboard-slide" data-say="I'll ask questions the way an interviewer hiring for this job would.">
+        <p class="room-kicker">Step 2 of 3 · Your goal</p>
+        <h1>What job do you want to pursue?</h1>
+        <p class="onboard-lead">Your interview questions will be set in this job. You're scored on how you communicate
+          and behave, not on technical knowledge.</p>
+        {{ your_goal(p, career_other_text) }}
+      </section>
+
+      <section class="onboard-slide" data-say="There are no wrong answers here. This only helps me ask better questions.">
+        <p class="room-kicker">Step 3 of 3 · Your experience</p>
+        <h1>Tell me about your experience</h1>
+        <p class="onboard-lead">This is only used to fit the questions to you. It never affects your score.</p>
+        {{ experience(p, opts) }}
+      </section>
+    </div>
+
+    <div class="onboard-nav">
+      <span class="onboard-dots" aria-hidden="true"></span>
+      <div class="btn-row">
+        <button type="button" class="btn btn-outline" id="onboardBack" hidden>Back</button>
+        <button type="button" class="btn" id="onboardNext" hidden>Next {{ ui_icon("arrow", 16) }}</button>
+        <button type="submit" class="btn" id="onboardDone">Continue to privacy consent {{ ui_icon("arrow", 16) }}</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{{ form_script() }}
+<script>
+  (function () {
+    var form = document.getElementById("onboard"), slides = form.querySelectorAll(".onboard-slide"),
+        dots = form.querySelector(".onboard-dots"), steps = document.querySelectorAll("#setupSteps li"),
+        back = document.getElementById("onboardBack"), next = document.getElementById("onboardNext"),
+        done = document.getElementById("onboardDone"), speech = document.getElementById("onboardSpeech"), at = 0;
+    form.classList.add("is-paged");
+    form.noValidate = false;
+    slides.forEach(function () { dots.appendChild(document.createElement("i")); });
+    function show(i) {
+      at = i;
+      slides.forEach(function (s, k) { s.hidden = k !== i; });
+      dots.querySelectorAll("i").forEach(function (d, k) { d.classList.toggle("on", k === i); });
+      steps.forEach(function (li, k) {
+        li.className = k < i ? "done" : k === i ? "current" : "";
+        li.querySelector("span").textContent = k < i ? "✓" : k + 1;
+      });
+      back.hidden = i === 0;
+      next.hidden = i === slides.length - 1;
+      done.hidden = i !== slides.length - 1;
+      speech.textContent = slides[i].dataset.say;
+      window.scrollTo({ top: 0 });
+    }
+    // Only move on when this step is filled in (the browser shows what's missing)
+    function stepValid() {
+      var fields = slides[at].querySelectorAll("input, select, textarea");
+      for (var k = 0; k < fields.length; k++) {
+        if (!fields[k].closest("[hidden]") && !fields[k].checkValidity()) { fields[k].reportValidity(); return false; }
+      }
+      return true;
+    }
+    back.addEventListener("click", function () { show(at - 1); });
+    next.addEventListener("click", function () { if (stepValid()) show(at + 1); });
+    // If the server sent the form back with a problem, open the first step that has one
+    form.addEventListener("invalid", function (e) {
+      var slide = e.target.closest(".onboard-slide"), k = Array.prototype.indexOf.call(slides, slide);
+      if (k >= 0 && k !== at) show(k);
+    }, true);
+    show(0);
+  })();
+</script>
+{% endblock %}

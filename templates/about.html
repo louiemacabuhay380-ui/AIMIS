@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+{% from "_robot.html" import robot %}
+{% from "_icons.html" import ui_icon %}
+{% block title %}How AIMIS works{% endblock %}
+
+{% block content %}
+{# Onboarding (adviser's flow: log in -> What is AIMIS -> consent -> dashboard). Without JavaScript all steps show at once. #}
+<div class="onboard">
+
+  <section class="card onboard-card" id="onboard">
+    <div class="onboard-bot">
+      {{ robot("happy") }}
+      <div class="speech speech-up" id="onboardSpeech">Hi{% if session.full_name %}, {{ session.full_name.split(' ')[0] }}{% endif %}! I'm AIMIS Bot, your practice interviewer.</div>
+    </div>
+
+    <div class="onboard-slides">
+      <article class="onboard-slide" data-say="Hi{% if session.full_name %}, {{ session.full_name.split(' ')[0] }}{% endif %}! I'm AIMIS Bot, your practice interviewer.">
+        <p class="room-kicker">Step 1 of 4 · What is AIMIS</p>
+        <h1>Practice job interviews before the real one</h1>
+        <p class="onboard-lead">AIMIS (AI Mock Interview System) lets you practice job interviews with an AI interviewer.
+          It talks with you like a real interviewer for the job you want, then shows you what went well and what to improve.</p>
+        <ul class="onboard-points">
+          <li>{{ ui_icon("briefcase", 22) }}<span><b>Set in your target job</b>Questions fit the job you're preparing for, like IT, BPO or teaching.</span></li>
+          <li>{{ ui_icon("chat", 22) }}<span><b>Focused on communication and behavior</b>It checks how you answer and how you come across, not technical knowledge.</span></li>
+          <li>{{ ui_icon("history", 22) }}<span><b>Practice as often as you want</b>Every interview is saved so you can see your progress.</span></li>
+        </ul>
+      </article>
+
+      <article class="onboard-slide" data-say="I don't use a fixed list of questions. I listen to your answer and decide what to ask next.">
+        <p class="room-kicker">Step 2 of 4 · How an interview works</p>
+        <h1>A real conversation, not a quiz</h1>
+        <ol class="onboard-flow">
+          <li><b>Pick a skill and a level</b>For example Teamwork, Beginner, 4 questions.</li>
+          <li><b>AIMIS Bot asks out loud</b>In your first interview it starts by asking your name and about yourself.</li>
+          <li><b>You answer by speaking</b>Your microphone records your answer and your camera checks eye contact, expression and gestures.</li>
+          <li><b>It replies and follows up</b>If your answer has a real example, it asks a follow-up about it. If not, it moves on to the next question.</li>
+        </ol>
+        <p class="muted">An interview takes about 5 to 10 minutes. Use a quiet room with good lighting.</p>
+      </article>
+
+      <article class="onboard-slide" data-say="You get two scores: what you said, and how you said it.">
+        <p class="room-kicker">Step 3 of 4 · How you're scored</p>
+        <h1>Two scores, one readiness result</h1>
+        <div class="onboard-scores">
+          <div class="onboard-score">
+            <span class="onboard-pct">60%</span>
+            <b>Answer Effectiveness</b>
+            <p>What you said: relevance, directness, structure (STAR) and specific examples.</p>
+          </div>
+          <div class="onboard-score">
+            <span class="onboard-pct">40%</span>
+            <b>Communication Delivery</b>
+            <p>How you said it: fluency, clarity, vocal confidence and grammar, plus eye contact, facial expression and gestures.</p>
+          </div>
+        </div>
+        <p class="muted">Together they make your <b>Interview Readiness</b> score. 70 or higher meets the standard.</p>
+      </article>
+
+      <article class="onboard-slide" data-say="After each interview, I'll show you exactly what to work on next.">
+        <p class="room-kicker">Step 4 of 4 · After your interview</p>
+        <h1>Clear feedback you can act on</h1>
+        <ul class="onboard-points">
+          <li>{{ ui_icon("chart", 22) }}<span><b>Your report</b>Scores for every answer, what you did well, and what to improve.</span></li>
+          <li>{{ ui_icon("spark", 22) }}<span><b>A better answer</b>An example of how your answer could sound stronger.</span></li>
+          <li>{{ ui_icon("chat", 22) }}<span><b>AIMIS Coach</b>A chatbot that answers questions about your own results.</span></li>
+        </ul>
+      </article>
+    </div>
+
+    <div class="onboard-nav">
+      <span class="onboard-dots" aria-hidden="true"></span>
+      <div class="btn-row">
+        <button type="button" class="btn btn-outline" id="onboardBack" hidden>Back</button>
+        <button type="button" class="btn" id="onboardNext" hidden>Next {{ ui_icon("arrow", 16) }}</button>
+        <a href="{{ url_for('start_interview') }}" class="btn" id="onboardDone">Start an interview {{ ui_icon("arrow", 16) }}</a>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+  (function () {
+    var slides = document.querySelectorAll(".onboard-slide"), dots = document.querySelector(".onboard-dots"),
+        back = document.getElementById("onboardBack"), next = document.getElementById("onboardNext"),
+        done = document.getElementById("onboardDone"), speech = document.getElementById("onboardSpeech"), at = 0;
+    document.getElementById("onboard").classList.add("is-paged");
+    slides.forEach(function () { dots.appendChild(document.createElement("i")); });
+    function show(i) {
+      at = i;
+      slides.forEach(function (s, k) { s.hidden = k !== i; });
+      dots.querySelectorAll("i").forEach(function (d, k) { d.classList.toggle("on", k === i); });
+      back.hidden = i === 0;
+      next.hidden = i === slides.length - 1;
+      done.hidden = i !== slides.length - 1;
+      speech.textContent = slides[i].dataset.say;
+    }
+    back.addEventListener("click", function () { show(at - 1); });
+    next.addEventListener("click", function () { show(at + 1); next.focus(); });
+    show(0);
+  })();
+</script>
+{% endblock %}

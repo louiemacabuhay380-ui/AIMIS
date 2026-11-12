@@ -2,9 +2,10 @@
 import json
 import time
 
-from flask import request, session, jsonify, Response, stream_with_context
+from flask import request, session, jsonify, Response, stream_with_context, url_for
 
 import rag
+import account_actions
 
 MAX_QUESTION_CHARS = 500
 HISTORY_SHOWN = 30
@@ -88,6 +89,24 @@ def register(app, get_db, load_report):
         cursor = conn.cursor(dictionary=True)
         interview_id = own_interview(cursor, user_id, data.get("interview_id"))
 
+        # Account request ("change my name to ..."): handled by fixed rules, never by the AI. A change is only
+        # proposed here; it is saved after the student presses Confirm (chat_action below).
+        action = account_actions.detect(question)
+        if action:
+            cursor.execute("SELECT full_name, career_goal FROM users WHERE user_id = %s", (user_id,))
+            user = cursor.fetchone()
+            urls = {"career": url_for("career_goal"), "forgot": url_for("forgot_password"), "my_data": url_for("my_data")}
+            answer = account_actions.reply_for(action, user, urls)
+            payload = {"type": "account", "text": answer["text"]}
+            if answer.get("confirm"):
+                payload["action_id"] = account_actions.remember(session, action)
+            if answer.get("link"):
+                payload["link"] = {"label": answer["link"][0], "url": answer["link"][1]}
+            save_exchange(cursor, user_id, interview_id, question, answer["text"])
+            conn.commit()
+            conn.close()
+            return jsonify(payload)
+
         # Off-topic question ("What food should I eat?"): polite fixed reply, no data looked up or sent to the AI
         refusal = rag.off_topic_reply(question)
         if refusal:
@@ -150,6 +169,43 @@ def register(app, get_db, load_report):
         response.headers["Cache-Control"] = "no-cache"
         return response
 
+    def save_exchange(cursor, user_id, interview_id, question, reply):
+        if question:
+            cursor.execute("INSERT INTO chat_messages (user_id, interview_id, role, content) VALUES (%s, %s, 'user', %s)",
+                           (user_id, interview_id, question))
+        cursor.execute("""INSERT INTO chat_messages (user_id, interview_id, role, content, sources)
+                          VALUES (%s, %s, 'bot', %s, '[]')""", (user_id, interview_id, reply))
+
+    def chat_action():
+        """The student pressed Confirm or Cancel on a change the chatbot proposed."""
+        user_id = current_user()
+        if not user_id:
+            return jsonify(error="Please log in again."), 401
+        data = request.get_json(silent=True) or {}
+        pending = account_actions.take(session, str(data.get("action_id") or ""))
+        if not pending:
+            return jsonify(ok=False, text="That request has expired. Type it again and I'll ask you to confirm.")
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        interview_id = own_interview(cursor, user_id, data.get("interview_id"))
+        if data.get("decision") != "confirm":
+            text = "Okay, I didn't change anything."
+        elif pending["kind"] == "name":
+            cursor.execute("UPDATE users SET full_name = %s WHERE user_id = %s", (pending["value"], user_id))
+            session["full_name"] = pending["value"]
+            text = f"Done. Your name is now **{pending['value']}**."
+        elif pending["kind"] == "career":
+            cursor.execute("UPDATE users SET career_goal = %s WHERE user_id = %s", (pending["value"], user_id))
+            text = f"Done. Your career goal is now **{pending['value']}**. Your next interview will be set in this job."
+        else:
+            text = "Sorry, I can't do that here."
+        save_exchange(cursor, user_id, interview_id, None, text)
+        conn.commit()
+        conn.close()
+        return jsonify(ok=True, text=text, changed=data.get("decision") == "confirm", kind=pending["kind"],
+                       value=pending["value"])
+
+    app.add_url_rule("/chat/action", "chat_action", chat_action, methods=["POST"])
     app.add_url_rule("/chat/history", "chat_history", chat_history)
     app.add_url_rule("/chat/clear", "chat_clear", chat_clear, methods=["POST"])
     app.add_url_rule("/chat/status", "chat_status", chat_status)

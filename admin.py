@@ -2,8 +2,8 @@
 AIMIS admin panel: overview, users, interview records (with CSV export), and questions.
 
 Admins log in on the normal login page; accounts with role = 'admin' are sent here.
-Make the first admin in SQLyog:
-    UPDATE users SET role = 'admin' WHERE email = 'your@email.com';
+A new database already has the admin account admin12345@gmail.com. To make another account an admin:
+    python db.py make-admin your@email.com
 
 Privacy: admins see scores and feedback only, never transcripts or recordings.
 """
@@ -101,10 +101,10 @@ def register(app, get_db, load_report, generate_questions):
         cursor.execute("SELECT COUNT(*) AS n FROM users WHERE role IS NULL OR role <> 'admin'")
         students = cursor.fetchone()["n"]
         cursor.execute("""SELECT COUNT(DISTINCT user_id) AS n FROM interviews
-                          WHERE started_at >= NOW() - INTERVAL 7 DAY""")
+                          WHERE started_at >= datetime(NOW(), '-7 days')""")
         active_week = cursor.fetchone()["n"]
         cursor.execute("""SELECT COUNT(*) AS total,
-                                 SUM(completed_at >= NOW() - INTERVAL 7 DAY) AS week
+                                 SUM(completed_at >= datetime(NOW(), '-7 days')) AS week
                           FROM interviews WHERE status = 'completed'""")
         done = cursor.fetchone()
         cursor.execute("""SELECT AVG(e.overall_score) AS overall, AVG(e.response_quality_score) AS quality,
@@ -115,11 +115,11 @@ def register(app, get_db, load_report, generate_questions):
 
         # Completed interviews per day, last 14 days (days with none show as 0)
         cursor.execute("""SELECT DATE(completed_at) AS d, COUNT(*) AS n FROM interviews
-                          WHERE status = 'completed' AND completed_at >= CURDATE() - INTERVAL 13 DAY
+                          WHERE status = 'completed' AND completed_at >= date(CURDATE(), '-13 days')
                           GROUP BY DATE(completed_at)""")
-        per_day = {r["d"]: r["n"] for r in cursor.fetchall()}
+        per_day = {str(r["d"]): r["n"] for r in cursor.fetchall()}
         days = [date.today() - timedelta(days=13 - k) for k in range(14)]
-        daily = [{"label": d.strftime("%b %d"), "short": d.strftime("%a")[0], "n": int(per_day.get(d, 0))}
+        daily = [{"label": d.strftime("%b %d"), "short": d.strftime("%a")[0], "n": int(per_day.get(d.isoformat(), 0))}
                  for d in days]
         daily_max = max([d["n"] for d in daily] + [1])
 
@@ -413,7 +413,7 @@ def register(app, get_db, load_report, generate_questions):
                                           FROM interview_questions GROUP BY question_id) u
                                       ON u.question_id = qb.question_id
                                WHERE {' AND '.join(where)}
-                               ORDER BY qb.category, FIELD(qb.difficulty, 'Beginner', 'Intermediate', 'Advanced'),
+                               ORDER BY qb.category, CASE qb.difficulty WHEN 'Beginner' THEN 1 WHEN 'Intermediate' THEN 2 ELSE 3 END,
                                         qb.question_id DESC""", values)
             questions = cursor.fetchall()
             cursor.execute("""SELECT SUM(is_active = 1) AS active, SUM(review_status = 'pending') AS pending,
@@ -517,7 +517,7 @@ def register(app, get_db, load_report, generate_questions):
         elif action == "turn_on":
             # A question written live for one student becomes a normal bank question (source 'ai')
             cursor.execute("""UPDATE question_bank SET is_active = 1, review_status = 'approved',
-                                     source = IF(source = 'live', 'ai', source)
+                                     source = CASE WHEN source = 'live' THEN 'ai' ELSE source END
                               WHERE question_id = %s AND review_status <> 'followup'""", (question_id,))
             flash("Question turned on. Students can get it from the bank now.")
         conn.commit()

@@ -4,3 +4,10 @@ __pycache__/
 uploads/
 AIMIS-UI-real.zip
 AIMIS-UI-real.zip
+
+# The SQLite database has students' personal data: never push it
+aimis.db
+aimis.db-*
+*.db
+*.db-wal
+*.db-shm

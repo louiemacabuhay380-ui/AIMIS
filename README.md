@@ -36,7 +36,9 @@ Capstone project of Group 6, First City Providential College.
 
 ## Setup (Windows)
 
-Requirements: Python 3.11+, MySQL (with the AIMIS database imported), [Ollama](https://ollama.com).
+Requirements: Python 3.11+ and [Ollama](https://ollama.com). **No XAMPP / MySQL**: the database is SQLite,
+a single file `aimis.db` in the AIMIS folder. It is created automatically the first time AIMIS starts, with the
+approved question bank and the admin account `admin12345@gmail.com` already inside.
 
 ```
 python -m venv venv
@@ -50,8 +52,14 @@ python check_setup.py --fix     (checks everything and adds missing database tab
 python app.py
 ```
 
-Open http://127.0.0.1:5000. Make yourself admin in MySQL:
-`UPDATE users SET role = 'admin' WHERE email = 'your@email.com';`
+Open http://127.0.0.1:5000. To make another account an admin: `python db.py make-admin your@email.com`
+
+Database commands:
+- `python db.py info` — where the database is and how many rows each table has
+- `python db.py reset` — back up `aimis.db` and start again with an empty one (questions + admin only)
+- `python migrate_from_mysql.py` — one-time copy of your old XAMPP data into `aimis.db` (MySQL must still be running)
+- To look inside `aimis.db`, use [DB Browser for SQLite](https://sqlitebrowser.org) (replaces SQLyog). Close AIMIS
+  before changing data in it.
 
 Optional:
 - `pip install faster-whisper` — offline speech-to-text backup
@@ -74,7 +82,7 @@ See `.env.example` for every setting. The important ones:
 | `ADAPTIVE_INTERVIEW=0` | Fixed question list instead of the conversation (default: conversation) |
 | `FLASK_DEBUG=1` | Debug mode, only on your own laptop |
 
-Never push `.env`, `uploads/` or CSV exports with names to GitHub.
+Never push `.env`, `aimis.db`, `uploads/` or CSV exports with names to GitHub (`aimis.db` holds students' personal data).
 
 ## Project structure
 
@@ -92,10 +100,13 @@ Never push `.env`, `uploads/` or CSV exports with names to GitHub.
 | `my_data.py` | My data page, data deletion, automatic recording deletion |
 | `security.py` | CSRF, login lockout, cookies, security headers, account checks |
 | `password_reset.py` | Forgot password by email |
+| `db.py` | SQLite database: connection, creating `aimis.db`, `info` / `reset` / `make-admin` commands |
+| `migrate_from_mysql.py` | One-time copy of the old XAMPP / MySQL data into `aimis.db` |
 | `check_setup.py` | Setup check and database fixer |
 | `seed_demo.py` | Demo account for presentations |
 | `templates/`, `static/` | Pages, styles, robot, MediaPipe files |
-| `database/` | SQL for the tables added during development (also applied by `check_setup.py --fix`) |
+| `database/aimis_sqlite.sql`, `database/seed_sqlite.sql` | The SQLite tables, and the starting questions + admin account |
+| `database/block*.sql`, `schema_updates.sql` | Old MySQL update scripts (history only; not needed with SQLite) |
 
 ## Troubleshooting
 
@@ -104,6 +115,6 @@ Never push `.env`, `uploads/` or CSV exports with names to GitHub.
 | Something is missing or a column error (1054) | `python check_setup.py --fix` |
 | "Gemini's free limit has been reached" | Wait for the daily reset, or let the Ollama backup score it (Ollama must be running) |
 | Chatbot says the AI isn't running | Open Ollama; check the models with `ollama list` |
-| MySQL 2002 / 2013 | Start MySQL; if a table is damaged: `CHECK TABLE name; REPAIR TABLE name;` |
+| "database is locked" | Another program has `aimis.db` open for writing (e.g. DB Browser with unsaved changes): save or close it |
 | Live transcript doesn't appear | Use Chrome or Edge |
 | Locked out after wrong passwords | Wait 15 minutes or restart the app |

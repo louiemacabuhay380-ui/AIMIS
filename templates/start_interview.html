@@ -16,7 +16,7 @@
   <span class="career-banner-label">Interview for</span>
   <b class="career-banner-job">{{ career }}</b>
   <span class="muted small">{% if adaptive %}A conversation: AIMIS Bot writes each question from your answers (it asks your name only in your first interview).{% elif live %}AIMIS Bot writes new questions for this job each time.{% else %}Questions for this job come first.{% endif %}</span>
-  <a href="{{ url_for('career_goal', next=request.path) }}" class="btn btn-sm btn-outline">Change job</a>
+  <button type="button" class="btn btn-sm btn-outline" data-open-career>Change job</button>
 </div>
 
 <ol class="how-steps">
@@ -60,22 +60,9 @@
       <span class="field-hint">{% if adaptive %}2 to 10 main questions (in your first interview this includes your introduction). Follow-up questions don't count toward this number.{% else %}1 to 10.{% endif %} Each answer can be up to 3 minutes.</span>
     </label>
 
-    <label class="consent">
-      <input type="checkbox" name="consent" value="yes" required>
-      <span>I agree to have my voice recorded and my camera used during this interview.
-        <ul class="consent-list">
-          <li>My voice recordings are stored encrypted and sent to <b>Google Gemini</b>, a third-party AI
-            service, to turn my speech into text, let the interviewer respond to my answers, and score them. Google's free service may use this
-            content to improve its products.</li>
-          <li>My camera is analyzed only on this device. Video is never recorded or uploaded; only the
-            behavior scores are saved.</li>
-          <li>My answers (text only, without my name) may be reviewed by teachers or HR evaluators to check how
-            accurate the AI's scores are.</li>
-          <li>Recordings are deleted automatically after {{ recording_days }} days. I can delete all my data
-            anytime on the <a href="{{ url_for('my_data') }}" target="_blank">My data</a> page.</li>
-        </ul>
-      </span>
-    </label>
+    <p class="consent-note">{{ ui_icon("shield", 18) }}
+      <span>Your microphone and camera will be used as you agreed in your
+        <a href="{{ url_for('privacy_consent') }}">privacy consent</a>. Video is never recorded.</span></p>
 
     <div class="btn-row">
       <button type="submit" class="btn btn-lg" id="beginBtn">{{ ui_icon("play", 16) }} Begin interview</button>

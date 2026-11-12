@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% from "_icons.html" import ui_icon %}
+{% block title %}Privacy consent · AIMIS{% endblock %}
+{% block layout %}{{ '' if agreed else 'focus' }}{% endblock %}
+
+{% block content %}
+<div class="onboard">
+  {% if not agreed %}
+    <ol class="setup-steps" aria-label="Account setup">
+      <li class="done"><span>✓</span>About you</li>
+      <li class="done"><span>✓</span>Your goal</li>
+      <li class="done"><span>✓</span>Your experience</li>
+      <li class="current"><span>4</span>Privacy consent</li>
+    </ol>
+  {% endif %}
+
+  <section class="card consent-card{{ ' is-agreed' if agreed }}">
+    <header class="consent-head">
+      <span class="consent-icon">{{ ui_icon("shield", 28) }}</span>
+      <div>
+        <p class="room-kicker">Data Privacy Act of 2012 (RA 10173)</p>
+        <h1>Your privacy and consent</h1>
+        <p class="muted">AIMIS needs your microphone and camera to interview you. Please read what we collect and
+          why. You agree once, and it covers all your interviews until you withdraw it.</p>
+      </div>
+    </header>
+
+    {% if updated %}
+      <p class="notice">We updated these terms, so we're asking you again.</p>
+    {% endif %}
+
+    <div class="consent-grid">
+      <div class="consent-item">
+        <h2>{{ ui_icon("mic", 20) }} Your voice</h2>
+        <p>Your answers are recorded and stored encrypted. They are sent to <b>Google Gemini</b>, a third-party AI
+          service, to turn your speech into text, let the interviewer respond, and score your answers. Google's free
+          service may use this content to improve its products.</p>
+      </div>
+      <div class="consent-item">
+        <h2>{{ ui_icon("camera", 20) }} Your camera</h2>
+        <p>Your camera is analyzed only on this device to measure eye contact, facial expression and gestures.
+          Video is never recorded or uploaded. Only the behavior scores are saved.</p>
+      </div>
+      <div class="consent-item">
+        <h2>{{ ui_icon("users", 20) }} Evaluators</h2>
+        <p>Your answers (text only, without your name) may be reviewed by teachers or HR evaluators to check how
+          accurate the AI's scores are. Administrators see your scores, never your recordings or transcripts.</p>
+      </div>
+      <div class="consent-item">
+        <h2>{{ ui_icon("briefcase", 20) }} Your profile</h2>
+        <p>Your age, studies, target job and experience are sent with your answers to the AI interviewer only so its
+          questions fit you. They are never used for your scores, and you can change them on <b>My profile</b>.</p>
+      </div>
+      <div class="consent-item">
+        <h2>{{ ui_icon("lock", 20) }} Your rights</h2>
+        <p>Recordings are deleted automatically after {{ recording_days }} days. You can see, download or delete all
+          your data anytime on the <a href="{{ url_for('my_data') }}">My data</a> page, and withdraw this consent.</p>
+      </div>
+    </div>
+
+    {% if agreed %}
+      <div class="consent-status">
+        <p>{{ ui_icon("check", 18) }} You agreed on <b>{{ agreed.strftime('%B %d, %Y') }}</b> (terms {{ version }}).</p>
+        <form method="POST" onsubmit="return confirm('Withdraw your consent? You will not be able to start interviews until you agree again.');">
+          <input type="hidden" name="action" value="withdraw">
+          <button type="submit" class="btn btn-outline btn-danger-outline">Withdraw consent</button>
+        </form>
+      </div>
+    {% else %}
+      <form method="POST" class="consent-form">
+        <label class="consent">
+          <input type="checkbox" name="agree" value="yes" required>
+          <span>I have read the information on this page and I agree to have my voice recorded and my camera used during my AIMIS
+            interviews, for the purposes described.</span>
+        </label>
+        <div class="btn-row">
+          <button type="submit" class="btn btn-lg">I agree, continue {{ ui_icon("arrow", 16) }}</button>
+          <a href="{{ url_for('welcome') }}" class="btn btn-outline btn-lg">Back</a>
+        </div>
+        <p class="muted small">Nothing is recorded until you agree.</p>
+      </form>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

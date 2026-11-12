@@ -1,0 +1,137 @@
+{# The student profile questions (onboarding and the My profile page). `p` = current values, `opts` = choices. #}
+
+{% macro about_you(p, opts, with_name=false) %}
+{% if with_name %}
+<label class="kyc-field kyc-name">Full name
+  <input name="full_name" maxlength="100" value="{{ p.full_name or session.full_name or '' }}" autocomplete="name" required
+         placeholder="e.g. Juan Dela Cruz">
+  <span class="field-hint">Shown on your home page and reports. AIMIS Bot greets you by your first name.</span>
+</label>
+{% endif %}
+<div class="kyc-grid">
+  <label class="kyc-field kyc-age">How old are you?
+    <input type="number" name="age" min="{{ opts.age_min }}" max="{{ opts.age_max }}" inputmode="numeric"
+           value="{{ p.age or '' }}" placeholder="e.g. 21" required>
+  </label>
+  <label class="kyc-field"><span>Course or program <span class="optional">(optional)</span></span>
+    <input name="course" maxlength="{{ opts.course_max }}" value="{{ p.course or '' }}"
+           placeholder="e.g. BS Information Technology">
+  </label>
+</div>
+
+<fieldset class="kyc-fieldset">
+  <legend>What are you now?</legend>
+  <div class="chip-group">
+    {% for s in opts.status %}
+      <label class="chip"><input type="radio" name="education_status" value="{{ s }}" {{ 'checked' if p.education_status == s }} required><span>{{ s }}</span></label>
+    {% endfor %}
+  </div>
+</fieldset>
+
+<fieldset class="kyc-fieldset" id="yearBox" {{ '' if p.education_status == 'College student' else 'hidden' }}>
+  <legend>Year level</legend>
+  <div class="chip-group">
+    {% for y in opts.years %}
+      <label class="chip"><input type="radio" name="year_level" value="{{ y }}" {{ 'checked' if p.year_level == y }}><span>{{ y }}</span></label>
+    {% endfor %}
+  </div>
+</fieldset>
+{% endmacro %}
+
+
+{% macro your_goal(p, career_other_text) %}
+{% set known = career_options | map(attribute=0) | list %}
+{% set custom = p.career_goal and p.career_goal not in known %}
+<div class="pick-grid career-grid kyc-careers">
+  {% for name, desc in career_options %}
+    <label class="pick">
+      <input type="radio" name="career_goal" value="{{ name }}" {{ 'checked' if p.career_goal == name }} required>
+      <span class="pick-card career-card">
+        <span class="pick-name">{{ name }}</span>
+        <span class="career-desc">{{ desc[:1] | upper }}{{ desc[1:] }}</span>
+      </span>
+    </label>
+  {% endfor %}
+  <label class="pick">
+    <input type="radio" name="career_goal" value="{{ career_other }}" id="kycOther" {{ 'checked' if custom }}>
+    <span class="pick-card career-card">
+      <span class="pick-name">Something else</span>
+      <span class="career-desc">Type the job you want</span>
+    </span>
+  </label>
+</div>
+<label class="kyc-field" id="kycOtherBox" {{ '' if custom else 'hidden' }}>Type the job you want to pursue
+  <input name="career_other" id="kycOtherText" maxlength="{{ career_max }}" value="{{ career_other_text }}"
+         placeholder="e.g. Graphic designer, Flight attendant">
+</label>
+{% endmacro %}
+
+
+{% macro experience(p, opts) %}
+<div class="kyc-exp">
+<fieldset class="kyc-fieldset">
+  <legend>Do you have work experience?</legend>
+  <div class="chip-group">
+    {% for key, label in opts.work %}
+      <label class="chip"><input type="radio" name="work_experience" value="{{ key }}" {{ 'checked' if p.work_experience == key }} required><span>{{ label }}</span></label>
+    {% endfor %}
+  </div>
+</fieldset>
+
+<fieldset class="kyc-fieldset">
+  <legend>Have you had a real job interview before?</legend>
+  <div class="chip-group">
+    {% for key, label in opts.interviews %}
+      <label class="chip"><input type="radio" name="interview_experience" value="{{ key }}" {{ 'checked' if p.interview_experience == key }} required><span>{{ label }}</span></label>
+    {% endfor %}
+  </div>
+</fieldset>
+
+<fieldset class="kyc-fieldset kyc-wide">
+  <legend>How confident do you feel in job interviews?</legend>
+  <div class="chip-group chip-scale">
+    {% for key, label in opts.confidence %}
+      <label class="chip"><input type="radio" name="interview_confidence" value="{{ key }}" {{ 'checked' if p.interview_confidence == key }} required><span><b>{{ key }}</b>{{ label }}</span></label>
+    {% endfor %}
+  </div>
+</fieldset>
+
+<fieldset class="kyc-fieldset kyc-wide" id="focusBox" data-max="{{ opts.max_focus }}">
+  <legend>What do you want to improve most? <span class="optional">(pick up to {{ opts.max_focus }}, optional)</span></legend>
+  <div class="chip-group">
+    {% for f in opts.focus %}
+      <label class="chip chip-check"><input type="checkbox" name="focus_areas" value="{{ f }}" {{ 'checked' if f in (p.focus or []) }}><span>{{ f }}</span></label>
+    {% endfor %}
+  </div>
+</fieldset>
+</div>
+{% endmacro %}
+
+
+{% macro form_script() %}
+<script>
+  (function () {
+    // Year level only for college students
+    var year = document.getElementById("yearBox");
+    document.querySelectorAll('input[name="education_status"]').forEach(function (r) {
+      r.addEventListener("change", function () { year.hidden = r.value !== "College student"; });
+    });
+    // "Something else" career: show the text box
+    var other = document.getElementById("kycOther"), box = document.getElementById("kycOtherBox"),
+        text = document.getElementById("kycOtherText");
+    function sync(focus) { box.hidden = !other.checked; text.required = other.checked; if (other.checked && focus) text.focus(); }
+    document.querySelectorAll('input[name="career_goal"]').forEach(function (r) {
+      r.addEventListener("change", function () { sync(true); });
+    });
+    sync(false);
+    // At most 3 things to improve
+    var focusBox = document.getElementById("focusBox"), max = +focusBox.dataset.max;
+    function limit() {
+      var boxes = focusBox.querySelectorAll("input"), n = focusBox.querySelectorAll("input:checked").length;
+      boxes.forEach(function (b) { b.disabled = !b.checked && n >= max; });
+    }
+    focusBox.addEventListener("change", limit);
+    limit();
+  })();
+</script>
+{% endmacro %}

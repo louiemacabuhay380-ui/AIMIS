@@ -11,7 +11,7 @@ from flask import (Flask, render_template, request, redirect, url_for, session,
                    flash, jsonify, abort, Response)
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
-import mysql.connector
+import db
 from cryptography.fernet import Fernet, InvalidToken
 
 load_dotenv()
@@ -25,6 +25,8 @@ import personal_feedback
 import rag
 import scoring
 import careers
+import student_profile
+import account_actions
 
 app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
@@ -33,7 +35,7 @@ app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024   # max 25 MB upload
 AUDIO_DIR = os.path.join(app.root_path, "uploads", "audio")
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
-CONSENT_VERSION = "v1.3"   # v1.3 = anonymous answers may be reviewed by evaluators (validation); v1.2 = Gemini, retention
+CONSENT_VERSION = "v1.5"   # v1.5 = also covers the onboarding profile; v1.4 = given once after onboarding (covers every interview); v1.3 = anonymous answers may be reviewed by evaluators (validation); v1.2 = Gemini, retention
 
 # Score weights, criteria and levels are all in scoring.py (rubric v2)
 
@@ -42,6 +44,9 @@ CONSENT_VERSION = "v1.3"   # v1.3 = anonymous answers may be reviewed by evaluat
 # or the next question, written by the AI from the conversation so far. ADAPTIVE_INTERVIEW=0 in .env goes back to
 # a fixed list of questions prepared at the start.
 ADAPTIVE = (os.getenv("ADAPTIVE_INTERVIEW") or "1") != "0"
+# Follow-ups dig into answers that have substance; a main question gets at most this many in a row
+MAX_FOLLOW_UPS = int(os.getenv("MAX_FOLLOW_UPS") or 2)
+MAX_INTRO_FOLLOW_UPS = 1
 LIVE_TIMEOUT = float(os.getenv("LIVE_TIMEOUT_SECONDS") or 40)   # the student never waits longer than this
 live_pool = ThreadPoolExecutor(max_workers=4)
 
@@ -58,10 +63,8 @@ fernet = Fernet(_audio_key.encode())
 # ---------------------------------------------------------------- helpers
 
 def get_db():
-    return mysql.connector.connect(
-        host=os.getenv("DB_HOST"), user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"), database=os.getenv("DB_NAME"),
-        buffered=True)
+    """The SQLite database (aimis.db in the AIMIS folder; created the first time). No XAMPP / MySQL needed."""
+    return db.get_db()
 
 
 import security
@@ -76,6 +79,60 @@ my_data.register(app, get_db)          # My data page, Delete my data, automatic
 def privacy_settings():
     return {"recording_days": my_data.retention_days(), "rubric": scoring.summary(),
             "score_band": scoring.band, "score_level": scoring.level_class}
+
+
+@app.context_processor
+def student_nav():
+    """Sidebar and career goal pop-up: the student's target job, read on each page."""
+    if session.get("role") != "student" or "user_id" not in session:
+        return {}
+    try:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        goal = get_career(cursor, session["user_id"])
+        conn.close()
+    except Exception:
+        goal = None
+    return {"nav_career": goal, "career_options": careers.CAREER_GOALS, "career_other": careers.OTHER,
+            "career_max": careers.MAX_LENGTH}
+
+
+# Order of the first visit (adviser's flow): log in -> What is AIMIS -> data privacy consent -> dashboard.
+# Pages a student can't open until both steps are done. My data stays open so they can always delete their data.
+SETUP_GATED = {"dashboard", "interview_history", "start_interview", "device_check", "interview",
+               "processing", "interview_summary"}
+
+
+def setup_step():
+    """The setup page the student still has to finish ('welcome' or 'privacy_consent'), or None."""
+    if session.get("role") != "student":
+        return None
+    if not session.get("onboarded") or session.get("consent") != CONSENT_VERSION:
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT onboarded_at, consent_version FROM users WHERE user_id = %s", (session["user_id"],))
+        row = cursor.fetchone() or {}
+        conn.close()
+        session["onboarded"] = bool(row.get("onboarded_at"))
+        session["consent"] = row.get("consent_version")
+    if not session["onboarded"]:
+        return "welcome"
+    if session["consent"] != CONSENT_VERSION:
+        return "privacy_consent"
+    return None
+
+
+@app.before_request
+def finish_setup_first():
+    if request.method != "GET" or request.endpoint not in SETUP_GATED or "user_id" not in session:
+        return None
+    step = setup_step()
+    return redirect(url_for(step)) if step else None
+
+
+def after_login():
+    """Where a student goes after logging in or registering."""
+    return url_for(setup_step() or "dashboard")
 
 
 def login_required(f):
@@ -282,7 +339,7 @@ def transcribe_pending(interview_id):
 def live_answer(response_id, audio_bytes, duration, question_text, iv, allow_follow_up, need_next, history, avoid):
     """Runs right after an answer is saved: transcribe it, measure the speech, save both, and return what the
     interviewer says next ({"reply", "follow_up", "next_question"}). Uses its own database connection (thread)."""
-    result = live_turn(question_text, audio_bytes, iv.get("career_goal"), iv["category"], iv["difficulty"],
+    result = live_turn(question_text, audio_bytes, iv.get("ai_context") or iv.get("career_goal"), iv["category"], iv["difficulty"],
                        allow_follow_up, need_next=need_next, history=history, avoid=avoid)
     try:
         features = analyze_audio(audio_bytes, int(result.get("filler_word_count") or 0))
@@ -300,23 +357,39 @@ def live_answer(response_id, audio_bytes, duration, question_text, iv, allow_fol
     finally:
         conn.close()
     return {"reply": result.get("reply") or "", "follow_up": result.get("follow_up") or "",
-            "next_question": result.get("next_question") or ""}
+            "next_question": result.get("next_question") or "", "substance": bool(result.get("substance"))}
+
+
+def follow_ups_left(cursor, current):
+    """How many more follow-ups the current main question may get (follow-ups all point to their main question)."""
+    main_id = current["parent_iq_id"] or current["interview_question_id"]
+    cursor.execute("SELECT COUNT(*) AS n FROM interview_questions WHERE parent_iq_id = %s", (main_id,))
+    asked = int(cursor.fetchone()["n"])
+    cursor.execute("""SELECT qb.source FROM interview_questions iq JOIN question_bank qb ON qb.question_id = iq.question_id
+                      WHERE iq.interview_question_id = %s""", (main_id,))
+    row = cursor.fetchone()
+    limit = MAX_INTRO_FOLLOW_UPS if row and row["source"] == "opener" else MAX_FOLLOW_UPS
+    return max(limit - asked, 0)
 
 
 def add_follow_up(cursor, interview_id, current, text, iv):
-    """Insert the interviewer's follow-up question right after the question that was just answered."""
+    """Insert the interviewer's follow-up question right after the question that was just answered.
+    It points to the MAIN question, so the report shows "Follow-up on Q2" even for a second follow-up."""
     cursor.execute("""INSERT INTO question_bank (question_text, category, difficulty, is_active, source,
                                                  review_status, career_track)
                       VALUES (%s, %s, %s, 0, 'followup', 'followup', %s)""",
                    (text, iv["category"], iv["difficulty"], iv.get("career_goal")))
     question_id = cursor.lastrowid
-    # Make room: every later question moves down one place (largest first, so the order stays unique)
-    cursor.execute("""UPDATE interview_questions SET question_order = question_order + 1
-                      WHERE interview_id = %s AND question_order > %s
-                      ORDER BY question_order DESC""", (interview_id, current["question_order"]))
+    # Make room: every later question moves down one place. Done in two steps (through negative numbers)
+    # so the order stays unique at every moment, which SQLite checks row by row.
+    cursor.execute("""UPDATE interview_questions SET question_order = -(question_order + 1)
+                      WHERE interview_id = %s AND question_order > %s""", (interview_id, current["question_order"]))
+    cursor.execute("""UPDATE interview_questions SET question_order = -question_order
+                      WHERE interview_id = %s AND question_order < 0""", (interview_id,))
     cursor.execute("""INSERT INTO interview_questions (interview_id, question_id, question_order, parent_iq_id)
                       VALUES (%s, %s, %s, %s)""",
-                   (interview_id, question_id, current["question_order"] + 1, current["interview_question_id"]))
+                   (interview_id, question_id, current["question_order"] + 1,
+                    current["parent_iq_id"] or current["interview_question_id"]))
 
 
 NEXT_QUESTION_SQL = """SELECT iq.interview_question_id, iq.question_order, iq.parent_iq_id, qb.question_text,
@@ -398,6 +471,13 @@ def conversation(cursor, interview_id, user_id, category, before_order):
                       ORDER BY iq.interview_question_id DESC LIMIT 25""", (user_id, category))
     avoid = [r["question_text"] for r in cursor.fetchall()]
     return "\n".join(lines), avoid
+
+
+def interview_context(cursor, user_id, goal):
+    """The target job plus the student's profile, for the live interviewer (never used for scoring)."""
+    text = careers.context(goal)
+    about = student_profile.describe(student_profile.load(cursor, user_id))
+    return f"{text}\n{about}" if about else text
 
 
 def first_name():
@@ -482,8 +562,8 @@ def register():
         session["user_id"] = user_id
         session["full_name"] = full_name
         session["role"] = "student"
-        flash("Account created! One more step: tell us the job you're preparing for.")
-        return redirect(url_for("career_goal", first=1))
+        flash("Account created! Welcome to AIMIS.")
+        return redirect(after_login())
 
     return render_template("register.html")
 
@@ -512,9 +592,7 @@ def login():
                 return redirect(url_for("admin_overview"))
             if user["role"] == "rater":
                 return redirect(url_for("rate_answers"))
-            if not user.get("career_goal"):
-                return redirect(url_for("career_goal", first=1))
-            return redirect(url_for("dashboard"))
+            return redirect(after_login())
 
         flash("Incorrect email or password.")
         return redirect(url_for("login"))
@@ -529,6 +607,111 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.route("/welcome", methods=["GET", "POST"])
+@login_required
+def welcome():
+    """Onboarding: get to know the student (age, studies, the job they want, experience), then consent."""
+    if session.get("role") != "student":
+        return redirect(url_for("index"))
+    return profile_form("welcome.html", onboarding=True)
+
+
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def my_profile():
+    """The same questions as the onboarding, to view or change later (opened from the top-right profile menu)."""
+    if session.get("role") != "student":
+        return redirect(url_for("my_data"))
+    return profile_form("profile.html", onboarding=False)
+
+
+def profile_form(template, onboarding):
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    if request.method == "POST":
+        profile, career, problems = student_profile.from_form(request.form)
+        new_name = None
+        if not onboarding and "full_name" in request.form:
+            new_name = account_actions.clean_name(request.form.get("full_name"))
+            if not new_name:
+                problems.insert(0, "Enter your full name using letters only (at least 2 letters), e.g. Juan Dela Cruz.")
+        if problems:
+            conn.close()
+            for p in problems:
+                flash(p)
+            values = dict(profile, career_goal=career or request.form.get("career_other") or None)
+            values["focus"] = request.form.getlist("focus_areas")
+            values["full_name"] = request.form.get("full_name", "")
+            return render_template(template, p=values, career_other_text=request.form.get("career_other", ""),
+                                   opts=student_profile.options()), 400
+        student_profile.save(cursor, session["user_id"], profile, career)
+        if new_name and new_name != session.get("full_name"):
+            cursor.execute("UPDATE users SET full_name = %s WHERE user_id = %s", (new_name, session["user_id"]))
+            session["full_name"] = new_name
+        if onboarding:
+            cursor.execute("UPDATE users SET onboarded_at = COALESCE(onboarded_at, NOW()) WHERE user_id = %s",
+                           (session["user_id"],))
+        conn.commit()
+        conn.close()
+        if onboarding:
+            session["onboarded"] = True
+            return redirect(after_login())
+        flash("Your profile was saved. Your next interviews will use it.")
+        return redirect(url_for("my_profile"))
+    values = student_profile.load(cursor, session["user_id"])
+    conn.close()
+    values["focus"] = student_profile.focus_list(values)
+    known = [name for name, _ in careers.CAREER_GOALS]
+    custom = values.get("career_goal") if values.get("career_goal") not in known else ""
+    return render_template(template, p=values, career_other_text=custom or "", opts=student_profile.options())
+
+
+@app.route("/about")
+@login_required
+def about_aimis():
+    """What AIMIS is and how it works (from the sidebar)."""
+    return render_template("about.html")
+
+
+@app.route("/consent", methods=["GET", "POST"])
+@login_required
+def privacy_consent():
+    """Data privacy consent, given once after onboarding. It covers every interview until it is withdrawn
+    or the terms change (CONSENT_VERSION)."""
+    if session.get("role") != "student":
+        return redirect(url_for("index"))
+    if not session.get("onboarded") and setup_step() == "welcome":
+        return redirect(url_for("welcome"))
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    if request.method == "POST":
+        if request.form.get("action") == "withdraw":
+            cursor.execute("UPDATE users SET consent_version = NULL, consent_at = NULL WHERE user_id = %s",
+                           (session["user_id"],))
+            conn.commit()
+            conn.close()
+            session["consent"] = None
+            flash("You withdrew your consent. You can't start interviews until you agree again. "
+                  "Your past interviews are kept until you delete them on this page.")
+            return redirect(url_for("my_data"))
+        if request.form.get("agree") != "yes":
+            conn.close()
+            flash("Tick the box to agree, or log out if you don't want to continue.")
+            return redirect(url_for("privacy_consent"))
+        cursor.execute("UPDATE users SET consent_version = %s, consent_at = NOW() WHERE user_id = %s",
+                       (CONSENT_VERSION, session["user_id"]))
+        conn.commit()
+        conn.close()
+        session["consent"] = CONSENT_VERSION
+        return redirect(url_for("dashboard"))
+    cursor.execute("SELECT consent_version, consent_at FROM users WHERE user_id = %s", (session["user_id"],))
+    row = cursor.fetchone() or {}
+    conn.close()
+    agreed = row.get("consent_at") if row.get("consent_version") == CONSENT_VERSION else None
+    return render_template("consent.html", agreed=agreed, version=CONSENT_VERSION,
+                           updated=bool(row.get("consent_version")) and not agreed)
+
+
 def get_career(cursor, user_id):
     cursor.execute("SELECT career_goal FROM users WHERE user_id = %s", (user_id,))
     row = cursor.fetchone()
@@ -540,7 +723,8 @@ def get_career(cursor, user_id):
 @app.route("/career", methods=["GET", "POST"])
 @login_required
 def career_goal():
-    """Career goal: asked right after registering, and can be changed anytime (panel comment 6)."""
+    """Career goal (panel comment 6): a pop-up form on the dashboard after onboarding and consent.
+    It opens by itself until the student picks one, and can be changed anytime."""
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     if request.method == "POST":
@@ -548,17 +732,15 @@ def career_goal():
         if not goal:
             conn.close()
             flash("Choose the job you're preparing for (or type it in, at least 3 letters).")
-            return redirect(url_for("career_goal", first=request.form.get("first") or None))
+            return redirect(url_for("dashboard", career=1, next=safe_next_url(request.form.get("next"))))
         cursor.execute("UPDATE users SET career_goal = %s WHERE user_id = %s", (goal, session["user_id"]))
         conn.commit()
         conn.close()
         flash(f"Your interviews will now be for this job: {goal}.")
         return redirect(safe_next_url(request.form.get("next")) or url_for("dashboard"))
-    current = get_career(cursor, session["user_id"])
     conn.close()
-    return render_template("career.html", current=current, careers=careers.CAREER_GOALS,
-                           other=careers.OTHER, max_length=careers.MAX_LENGTH,
-                           first=bool(request.args.get("first")), next=request.args.get("next", ""))
+    # The career goal is a pop-up form on the dashboard
+    return redirect(url_for("dashboard", career=1, next=safe_next_url(request.args.get("next"))))
 
 
 def safe_next_url(value):
@@ -578,7 +760,7 @@ def needs_career():
     if goal:
         return None
     flash("First, tell us the job you're preparing for. Your interview questions will be set in that job.")
-    return redirect(url_for("career_goal", first=1, next=request.path))
+    return redirect(url_for("dashboard", career=1, next=request.path))
 
 
 # ---------------------------------------------------------------- dashboard
@@ -586,17 +768,10 @@ def needs_career():
 @app.route("/dashboard")
 @login_required
 def dashboard():
-    if (r := needs_career()):
-        return r
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
     career = get_career(cursor, session["user_id"])
-    cursor.execute("""SELECT i.*, e.evaluation_id
-                      FROM interviews i
-                      LEFT JOIN evaluations e ON e.interview_id = i.interview_id
-                      WHERE i.user_id = %s
-                      ORDER BY i.started_at DESC""", (session["user_id"],))
-    interviews = cursor.fetchall()
+    interviews = interview_list(cursor, session["user_id"])
 
     cursor.execute("""SELECT i.category, i.completed_at, e.overall_score, e.response_quality_score,
                              e.speech_performance_score, e.behavioral_score, e.delivery_score
@@ -640,8 +815,46 @@ def dashboard():
         }
 
     focus = min(skills, key=lambda s: s["value"]) if skills else None
-    return render_template("dashboard.html", interviews=interviews, chart=chart, stats=stats,
-                           skills=skills, focus=focus, weak_skill=weak_skill, subskills=subskills, career=career)
+    unfinished = [i for i in interviews if i["status"] == "in_progress"]
+    recent = [i for i in interviews if i["status"] == "completed"][:3]
+    return render_template("dashboard.html", interviews=interviews, recent=recent, unfinished=unfinished,
+                           chart=chart, stats=stats, skills=skills, focus=focus, weak_skill=weak_skill,
+                           subskills=subskills, career=career,
+                           open_career=bool(request.args.get("career")) or not career,
+                           career_next=safe_next_url(request.args.get("next")) or "")
+
+
+def interview_list(cursor, user_id):
+    """All of a student's interviews, newest first, with their scores."""
+    cursor.execute("""SELECT i.*, e.evaluation_id, e.response_quality_score AS answer_score, e.delivery_score,
+                             e.performance_profile, e.rubric_version
+                      FROM interviews i
+                      LEFT JOIN evaluations e ON e.interview_id = i.interview_id
+                      WHERE i.user_id = %s
+                      ORDER BY i.started_at DESC""", (user_id,))
+    return cursor.fetchall()
+
+
+@app.route("/history")
+@login_required
+def interview_history():
+    """Interview history page (opened from the sidebar)."""
+    conn = get_db()
+    cursor = conn.cursor(dictionary=True)
+    interviews = interview_list(cursor, session["user_id"])
+    conn.close()
+    show = request.args.get("show", "all")
+    if show == "completed":
+        shown = [i for i in interviews if i["status"] == "completed"]
+    elif show == "unfinished":
+        shown = [i for i in interviews if i["status"] == "in_progress"]
+    else:
+        show, shown = "all", [i for i in interviews if i["status"] != "cancelled"]
+    counts = {"all": sum(i["status"] != "cancelled" for i in interviews),
+              "completed": sum(i["status"] == "completed" for i in interviews),
+              "unfinished": sum(i["status"] == "in_progress" for i in interviews)}
+    return render_template("history.html", interviews=shown, show=show, counts=counts,
+                           profiles=scoring.PROFILES)
 
 
 # Skill rings on the dashboard: name, how it's computed, and a tip for improving it
@@ -739,6 +952,9 @@ def live_questions(cursor, user_id, category, difficulty, career, count):
 @app.route("/interview/start", methods=["GET", "POST"])
 @login_required
 def start_interview():
+    if request.method == "POST" and (step := setup_step()):
+        flash("You need to agree to the recording terms before starting an interview.")
+        return redirect(url_for(step))
     if (r := needs_career()):
         return r
     conn = get_db()
@@ -746,11 +962,6 @@ def start_interview():
     career = get_career(cursor, session["user_id"])
 
     if request.method == "POST":
-        if request.form.get("consent") != "yes":
-            conn.close()
-            flash("You need to agree to the recording terms before starting the interview.")
-            return redirect(url_for("start_interview"))
-
         category = request.form["category"]
         difficulty = request.form["difficulty"]
         try:
@@ -773,10 +984,12 @@ def start_interview():
                 # First interview: ask the student's name and about themselves
                 add_main_question(cursor, interview_id, OPENING_QUESTION, iv_new, source="opener")
             else:
-                # Returning student: they already introduced themselves, so start with a question written for them
+                # Returning student: they already introduced themselves, so start with a question written for them.
+                # Save first: SQLite lets only one connection write at a time, so don't hold it during the AI call.
+                conn.commit()
                 _, avoid = conversation(cursor, interview_id, session["user_id"], category, 1)
                 try:
-                    text = live_pool.submit(first_question, first_name(), careers.context(career), category,
+                    text = live_pool.submit(first_question, first_name(), interview_context(cursor, session["user_id"], career), category,
                                             difficulty, intro, avoid).result(timeout=LIVE_TIMEOUT)
                     add_main_question(cursor, interview_id, text, iv_new)
                 except Exception as e:
@@ -935,7 +1148,7 @@ def interview(interview_id):
                                        hands_visible_ratio, expressive_gesture_ratio, face_touch_ratio)
                                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                                    (response_id, *values, int(b.get("frames_analyzed", 0)), *extras))
-                except mysql.connector.errors.ProgrammingError as e:
+                except db.ProgrammingError as e:
                     if e.errno != 1054:      # 1054 = unknown column
                         raise
                     print("Note: run block 5 of database/schema_updates.sql to save the detailed gesture data.")
@@ -954,26 +1167,30 @@ def interview(interview_id):
         # interview simply continues and the answer is transcribed on the results page instead.
         reply = ""
         if ADAPTIVE:
-            is_main = current["parent_iq_id"] is None
-            allow = is_main and current.get("source") != "opener"      # no follow-up on the introduction
+            # A follow-up is possible while this main question has follow-ups left; the AI asks one only when
+            # the answer has substance to dig into, otherwise the interview moves on
+            allow = follow_ups_left(cursor, current) > 0
             # Is this the last main question? (Older interviews already have all their questions.)
             need_next = main_questions_asked(cursor, interview_id) < iv["number_of_questions"]
             history, avoid = conversation(cursor, interview_id, session["user_id"], iv["category"],
                                           current["question_order"])
             avoid = [current["question_text"]] + avoid
+            iv["ai_context"] = interview_context(cursor, iv["user_id"], iv.get("career_goal"))
             added = False
             try:
                 turn = live_pool.submit(live_answer, response_id, audio_bytes, duration, current["question_text"],
                                         iv, allow, need_next, history, avoid).result(timeout=LIVE_TIMEOUT)
                 reply = turn["reply"]
+                substance = "has substance" if turn.get("substance") else "has no substance to dig into"
                 if allow and turn["follow_up"]:
                     add_follow_up(cursor, interview_id, current, turn["follow_up"], iv)
                     added = True
-                    print("[AIMIS Bot] follow-up question written live")
+                    print(f"[AIMIS Bot] the answer {substance}: follow-up question written live")
                 elif need_next and turn["next_question"]:
                     add_main_question(cursor, interview_id, turn["next_question"], iv)
                     added = True
-                    print("[AIMIS Bot] next question written live from the conversation")
+                    why = f"the answer {substance}" if allow else "follow-up limit reached for this question"
+                    print(f"[AIMIS Bot] {why}: moving on, next question written live from the conversation")
             except FutureTimeout:
                 print(f"[AIMIS Bot] the answer took longer than {LIVE_TIMEOUT:.0f}s to process "
                       "(it will be transcribed on the results page)")
@@ -985,7 +1202,7 @@ def interview(interview_id):
                 try:
                     history, _ = conversation(cursor, interview_id, session["user_id"], iv["category"],
                                               current["question_order"] + 1)
-                    text = live_pool.submit(next_question_text, history, careers.context(iv.get("career_goal")),
+                    text = live_pool.submit(next_question_text, history, interview_context(cursor, iv["user_id"], iv.get("career_goal")),
                                             iv["category"], iv["difficulty"], avoid).result(timeout=20)
                     add_main_question(cursor, interview_id, text, iv)
                 except Exception as e:
