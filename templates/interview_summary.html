@@ -43,11 +43,13 @@
 </div>
 
 {# ---- Tabs: the report is split into three screens, each a bento grid ---- #}
+<div class="report-tabbar">
 <nav class="report-jump report-tabs" aria-label="Report sections">
   <a href="#sec-scores" data-tab="scores">Scores</a>
   {% if fb %}<a href="#sec-feedback" data-tab="feedback">Feedback</a>{% endif %}
   <a href="#sec-answers" data-tab="answers">{{ 'Answers' if admin_view else 'Your answers' }} <span class="jump-count">{{ answers | length }}</span></a>
 </nav>
+</div>
 
 <div class="bento bento-report report-panel" id="panel-scores" data-panel="scores">
 {% set v2 = evaluation and evaluation.rubric_version == rubric.version %}
@@ -556,6 +558,13 @@
   (function () {
     const panels = [...document.querySelectorAll(".report-panel")];
     const tabs = [...document.querySelectorAll(".report-tabs a")];
+    // Thin line under the tab strip once it sticks to the top
+    const tabbar = document.querySelector(".report-tabbar");
+    if (tabbar) {
+      const onScroll = () => tabbar.classList.toggle("is-stuck", tabbar.getBoundingClientRect().top <= 1 && window.scrollY > 0);
+      window.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+    }
     const panes = [...document.querySelectorAll(".answer-pane")];
     const links = [...document.querySelectorAll(".answer-link")];
     if (!panels.length) return;
