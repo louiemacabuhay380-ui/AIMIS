@@ -643,7 +643,7 @@ def profile_form(template, onboarding):
             values["focus"] = request.form.getlist("focus_areas")
             values["full_name"] = request.form.get("full_name", "")
             return render_template(template, p=values, career_other_text=request.form.get("career_other", ""),
-                                   opts=student_profile.options()), 400
+                                   opts=student_profile.options(), editing=True), 400
         student_profile.save(cursor, session["user_id"], profile, career)
         if new_name and new_name != session.get("full_name"):
             cursor.execute("UPDATE users SET full_name = %s WHERE user_id = %s", (new_name, session["user_id"]))
@@ -663,7 +663,8 @@ def profile_form(template, onboarding):
     values["focus"] = student_profile.focus_list(values)
     known = [name for name, _ in careers.CAREER_GOALS]
     custom = values.get("career_goal") if values.get("career_goal") not in known else ""
-    return render_template(template, p=values, career_other_text=custom or "", opts=student_profile.options())
+    return render_template(template, p=values, career_other_text=custom or "", opts=student_profile.options(),
+                           editing=request.args.get("edit") == "1")
 
 
 @app.route("/about")

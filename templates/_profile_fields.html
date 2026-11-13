@@ -19,31 +19,40 @@
   </label>
 </div>
 
+{% set status_other = p.education_status and p.education_status not in opts.status %}
 <fieldset class="kyc-fieldset">
   <legend>What are you now?</legend>
   <div class="chip-group">
     {% for s in opts.status %}
       <label class="chip"><input type="radio" name="education_status" value="{{ s }}" {{ 'checked' if p.education_status == s }} required><span>{{ s }}</span></label>
     {% endfor %}
+    <label class="chip"><input type="radio" name="education_status" value="{{ opts.others }}" data-other="statusOther" {{ 'checked' if status_other }}><span>Others</span></label>
   </div>
+  <input class="kyc-other" id="statusOther" name="education_status_other" maxlength="40" {{ '' if status_other else 'hidden' }}
+         value="{{ p.education_status if status_other else '' }}" placeholder="Type it, e.g. Working professional" aria-label="What are you now (others)">
 </fieldset>
 
+{% set year_other = p.year_level and p.year_level not in opts.years %}
 <fieldset class="kyc-fieldset" id="yearBox" {{ '' if p.education_status == 'College student' else 'hidden' }}>
   <legend>Year level</legend>
   <div class="chip-group">
     {% for y in opts.years %}
       <label class="chip"><input type="radio" name="year_level" value="{{ y }}" {{ 'checked' if p.year_level == y }}><span>{{ y }}</span></label>
     {% endfor %}
+    <label class="chip"><input type="radio" name="year_level" value="{{ opts.others }}" data-other="yearOther" {{ 'checked' if year_other }}><span>Others</span></label>
   </div>
+  <input class="kyc-other" id="yearOther" name="year_level_other" maxlength="{{ opts.year_other_max }}" {{ '' if year_other else 'hidden' }}
+         value="{{ p.year_level if year_other else '' }}" placeholder="Type it, e.g. 5th year" aria-label="Year level (others)">
 </fieldset>
 {% endmacro %}
 
 
 {% macro your_goal(p, career_other_text) %}
-{% set known = career_options | map(attribute=0) | list %}
+{% set shown = career_options[:opts.careers_shown] %}
+{% set known = shown | map(attribute=0) | list %}
 {% set custom = p.career_goal and p.career_goal not in known %}
 <div class="pick-grid career-grid kyc-careers">
-  {% for name, desc in career_options %}
+  {% for name, desc in shown %}
     <label class="pick">
       <input type="radio" name="career_goal" value="{{ name }}" {{ 'checked' if p.career_goal == name }} required>
       <span class="pick-card career-card">
@@ -55,21 +64,21 @@
   <label class="pick">
     <input type="radio" name="career_goal" value="{{ career_other }}" id="kycOther" {{ 'checked' if custom }}>
     <span class="pick-card career-card">
-      <span class="pick-name">Something else</span>
+      <span class="pick-name">Others</span>
       <span class="career-desc">Type the job you want</span>
     </span>
   </label>
 </div>
 <label class="kyc-field" id="kycOtherBox" {{ '' if custom else 'hidden' }}>Type the job you want to pursue
-  <input name="career_other" id="kycOtherText" maxlength="{{ career_max }}" value="{{ career_other_text }}"
-         placeholder="e.g. Graphic designer, Flight attendant">
+  <input name="career_other" id="kycOtherText" maxlength="{{ career_max }}" value="{{ career_other_text or (p.career_goal if custom else '') }}"
+         placeholder="e.g. Teacher, Nurse, Graphic designer">
 </label>
 {% endmacro %}
 
 
 {% macro experience(p, opts) %}
 <div class="kyc-exp">
-<fieldset class="kyc-fieldset">
+<fieldset class="kyc-fieldset kyc-work">
   <legend>Do you have work experience?</legend>
   <div class="chip-group">
     {% for key, label in opts.work %}
@@ -78,7 +87,7 @@
   </div>
 </fieldset>
 
-<fieldset class="kyc-fieldset">
+<fieldset class="kyc-fieldset kyc-int">
   <legend>Have you had a real job interview before?</legend>
   <div class="chip-group">
     {% for key, label in opts.interviews %}
@@ -87,22 +96,27 @@
   </div>
 </fieldset>
 
-<fieldset class="kyc-fieldset kyc-wide">
+<fieldset class="kyc-fieldset kyc-conf">
   <legend>How confident do you feel in job interviews?</legend>
-  <div class="chip-group chip-scale">
+  <div class="chip-group chip-nums">
     {% for key, label in opts.confidence %}
-      <label class="chip"><input type="radio" name="interview_confidence" value="{{ key }}" {{ 'checked' if p.interview_confidence == key }} required><span><b>{{ key }}</b>{{ label }}</span></label>
+      <label class="chip" title="{{ label }}"><input type="radio" name="interview_confidence" value="{{ key }}" {{ 'checked' if p.interview_confidence == key }} required aria-label="{{ key }}, {{ label }}"><span>{{ key }}</span></label>
     {% endfor %}
+    <small class="chip-nums-hint">1 = {{ opts.confidence[0][1] }} · {{ opts.confidence[-1][0] }} = {{ opts.confidence[-1][1] }}</small>
   </div>
 </fieldset>
 
+{% set focus_other = (p.focus or []) | reject('in', opts.focus) | list %}
 <fieldset class="kyc-fieldset kyc-wide" id="focusBox" data-max="{{ opts.max_focus }}">
   <legend>What do you want to improve most? <span class="optional">(pick up to {{ opts.max_focus }}, optional)</span></legend>
   <div class="chip-group">
     {% for f in opts.focus %}
       <label class="chip chip-check"><input type="checkbox" name="focus_areas" value="{{ f }}" {{ 'checked' if f in (p.focus or []) }}><span>{{ f }}</span></label>
     {% endfor %}
+    <label class="chip chip-check"><input type="checkbox" name="focus_areas" value="{{ opts.others }}" data-other="focusOther" {{ 'checked' if focus_other }}><span>Others</span></label>
   </div>
+  <input class="kyc-other" id="focusOther" name="focus_other" maxlength="{{ opts.other_max }}" {{ '' if focus_other else 'hidden' }}
+         value="{{ focus_other | join(', ') }}" placeholder="Type it, e.g. Handling difficult questions" aria-label="What to improve (others)">
 </fieldset>
 </div>
 {% endmacro %}
@@ -114,7 +128,12 @@
     // Year level only for college students
     var year = document.getElementById("yearBox");
     document.querySelectorAll('input[name="education_status"]').forEach(function (r) {
-      r.addEventListener("change", function () { year.hidden = r.value !== "College student"; });
+      r.addEventListener("change", function () {
+        year.hidden = r.value !== "College student";
+        // a hidden year level never blocks saving
+        var yo = document.getElementById("yearOther");
+        if (yo) yo.required = !year.hidden && !yo.hidden;
+      });
     });
     // "Something else" career: show the text box
     var other = document.getElementById("kycOther"), box = document.getElementById("kycOtherBox"),
@@ -124,6 +143,18 @@
       r.addEventListener("change", function () { sync(true); });
     });
     sync(false);
+    // "Others" choices: show their text box only when picked
+    document.querySelectorAll("[data-other]").forEach(function (input) {
+      var box = document.getElementById(input.dataset.other);
+      function syncOther(focus) {
+        box.hidden = !input.checked; box.required = input.checked;
+        if (input.checked && focus) box.focus();
+      }
+      document.querySelectorAll('input[name="' + input.name + '"]').forEach(function (r) {
+        r.addEventListener("change", function () { syncOther(true); });
+      });
+      syncOther(false);
+    });
     // At most 3 things to improve
     var focusBox = document.getElementById("focusBox"), max = +focusBox.dataset.max;
     function limit() {

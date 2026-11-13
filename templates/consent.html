@@ -4,31 +4,8 @@
 {% block layout %}{{ '' if agreed else 'focus' }}{% endblock %}
 
 {% block content %}
-<div class="onboard">
-  {% if not agreed %}
-    <ol class="setup-steps" aria-label="Account setup">
-      <li class="done"><span>✓</span>About you</li>
-      <li class="done"><span>✓</span>Your goal</li>
-      <li class="done"><span>✓</span>Your experience</li>
-      <li class="current"><span>4</span>Privacy consent</li>
-    </ol>
-  {% endif %}
-
-  <section class="card consent-card{{ ' is-agreed' if agreed }}">
-    <header class="consent-head">
-      <span class="consent-icon">{{ ui_icon("shield", 28) }}</span>
-      <div>
-        <p class="room-kicker">Data Privacy Act of 2012 (RA 10173)</p>
-        <h1>Your privacy and consent</h1>
-        <p class="muted">AIMIS needs your microphone and camera to interview you. Please read what we collect and
-          why. You agree once, and it covers all your interviews until you withdraw it.</p>
-      </div>
-    </header>
-
-    {% if updated %}
-      <p class="notice">We updated these terms, so we're asking you again.</p>
-    {% endif %}
-
+{% from "_robot.html" import robot %}
+{% macro consent_items() %}
     <div class="consent-grid">
       <div class="consent-item">
         <h2>{{ ui_icon("mic", 20) }} Your voice</h2>
@@ -58,7 +35,21 @@
       </div>
     </div>
 
-    {% if agreed %}
+{% endmacro %}
+
+{% if agreed %}
+{# Privacy page after agreeing (with the sidebar) #}
+<div class="onboard">
+  <section class="card consent-card is-agreed">
+    <header class="consent-head">
+      <span class="consent-icon">{{ ui_icon("shield", 28) }}</span>
+      <div>
+        <p class="room-kicker">Data Privacy Act of 2012 (RA 10173)</p>
+        <h1>Your privacy and consent</h1>
+        <p class="muted">AIMIS needs your microphone and camera to interview you. Here is what we collect and why.</p>
+      </div>
+    </header>
+    {{ consent_items() }}
       <div class="consent-status">
         <p>{{ ui_icon("check", 18) }} You agreed on <b>{{ agreed.strftime('%B %d, %Y') }}</b> (terms {{ version }}).</p>
         <form method="POST" onsubmit="return confirm('Withdraw your consent? You will not be able to start interviews until you agree again.');">
@@ -66,20 +57,48 @@
           <button type="submit" class="btn btn-outline btn-danger-outline">Withdraw consent</button>
         </form>
       </div>
-    {% else %}
-      <form method="POST" class="consent-form">
-        <label class="consent">
-          <input type="checkbox" name="agree" value="yes" required>
-          <span>I have read the information on this page and I agree to have my voice recorded and my camera used during my AIMIS
-            interviews, for the purposes described.</span>
-        </label>
-        <div class="btn-row">
-          <button type="submit" class="btn btn-lg">I agree, continue {{ ui_icon("arrow", 16) }}</button>
-          <a href="{{ url_for('welcome') }}" class="btn btn-outline btn-lg">Back</a>
-        </div>
-        <p class="muted small">Nothing is recorded until you agree.</p>
-      </form>
-    {% endif %}
   </section>
 </div>
+{% else %}
+{# Step 4 of the onboarding: same card as steps 1 to 3 #}
+{% set first = (session.full_name or '').split(' ')[0] %}
+<div class="setup-flow">
+  <form method="POST" class="card setup-card has-bot consent-step">
+    <div class="onboard-bot">
+      {{ robot("happy") }}
+      <div class="speech speech-up">Last step{% if first %}, {{ first }}{% endif %}! Please read how AIMIS uses your voice, camera and answers.</div>
+    </div>
+
+    <div class="onboard-slides">
+      <section class="onboard-slide">
+        <p class="room-kicker">Step 4 of 4 · Data Privacy Act of 2012 (RA 10173)</p>
+        <h1>Your privacy and consent</h1>
+        <p class="onboard-lead">You agree once, and it covers all your interviews until you withdraw it.</p>
+        {% if updated %}
+          <p class="notice">We updated these terms, so we're asking you again.</p>
+        {% endif %}
+        {{ consent_items() }}
+        <label class="consent consent-check">
+          <input type="checkbox" name="agree" value="yes" required>
+          <span>I have read the information on this page and I agree to have my voice recorded and my camera used during
+            my AIMIS interviews, for the purposes described.</span>
+        </label>
+      </section>
+
+      <div class="setup-nav">
+        <p class="setup-nav-note">{{ ui_icon("lock", 16) }} Nothing is recorded until you agree.</p>
+        <a href="{{ url_for('welcome') }}" class="btn btn-outline">Back</a>
+        <button type="submit" class="btn">I agree, continue {{ ui_icon("arrow", 16) }}</button>
+      </div>
+    </div>
+  </form>
+
+  <ol class="setup-dots" aria-label="Setup steps">
+    <li class="done"><span class="sr-only">Step 1: About you</span></li>
+    <li class="done"><span class="sr-only">Step 2: Your goal</span></li>
+    <li class="done"><span class="sr-only">Step 3: Your experience</span></li>
+    <li class="on" aria-current="step"><span class="sr-only">Step 4: Privacy consent</span></li>
+  </ol>
+</div>
+{% endif %}
 {% endblock %}

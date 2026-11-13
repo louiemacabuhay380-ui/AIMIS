@@ -37,12 +37,14 @@
 
   <section class="tile a-avg">
     <h2>Average scores</h2>
+    <div class="a-avg-grid">
     {% for label, v in [("Answer effectiveness", stats.quality), ("Verbal delivery", stats.speech), ("Nonverbal delivery", stats.behavior)] %}
       <div class="score-row">
         <div class="label-line"><span>{{ label }}</span><span>{{ "%.0f%%" | format(v) if v is number else "–" }}</span></div>
         <div class="bar"><span style="width: {{ v if v is number else 0 }}%"></span></div>
       </div>
     {% endfor %}
+    </div>
   </section>
 
   <section class="tile a-weak">

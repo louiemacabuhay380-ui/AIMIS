@@ -12,32 +12,29 @@
     </div>
   </header>
 
-  <p class="h-card-meta">
-    <span>{{ i.difficulty }}</span>
-    <span>{{ i.number_of_questions }} question{{ 's' if i.number_of_questions != 1 }}</span>
-    {% if i.career_goal %}<span title="Target job">{{ i.career_goal }}</span>{% endif %}
+  <p class="h-card-meta h-meta-line">
+    <span class="h-level-tag">{{ i.difficulty }}</span>
+    {{ i.number_of_questions }} question{{ 's' if i.number_of_questions != 1 }}{% if i.career_goal %} · <span title="Target job">{{ i.career_goal }}</span>{% endif %}
   </p>
 
   {% if i.status == 'completed' and scored %}
     <div class="h-card-score">
-      <span class="h-big">{{ "%.0f" | format(i.overall_score) }}</span>
-      <span class="h-band"><b>{{ score_band(i.overall_score) }}</b><small>Interview readiness</small></span>
+      <span class="h-big">{{ "%.0f" | format(i.overall_score) }}<small>/100</small></span>
+      <span class="h-band"><b class="h-band-name">{{ score_band(i.overall_score) }}</b><small>Interview readiness</small></span>
     </div>
     {% if i.answer_score is not none and i.delivery_score is not none and i.rubric_version == 'v2' %}
-      <div class="h-bars">
+      <div class="h-mini">
         {% for label, v in [("Answer", i.answer_score), ("Delivery", i.delivery_score)] %}
-          <div class="h-bar"><span>{{ label }}</span>
-            <span class="h-track"><i class="lvl-{{ score_level(v) }}" style="width: {{ [v, 100] | min }}%"></i></span>
-            <b>{{ "%.0f" | format(v) }}</b></div>
+          <div class="h-mini-box h-mini-{{ score_level(v) }}"><span>{{ label }}</span><b>{{ "%.0f" | format(v) }}</b></div>
         {% endfor %}
       </div>
     {% endif %}
     <a href="{{ url_for('interview_summary', interview_id=i.interview_id) }}" class="btn btn-outline h-action">View results {{ ui_icon("arrow", 16) }}</a>
   {% elif i.status == 'completed' %}
-    <p class="h-card-note">Results aren't ready yet.</p>
+    <div class="h-card-score h-pending"><span class="h-pending-icon">{{ ui_icon("spark", 22) }}</span><span class="h-band"><b class="h-band-name">Not scored yet</b><small>Open it to get your results</small></span></div>
     <a href="{{ url_for('interview_summary', interview_id=i.interview_id) }}" class="btn btn-outline h-action">Open</a>
   {% elif i.status == 'in_progress' %}
-    <p class="h-card-note"><span class="badge badge-warn">Unfinished</span> Pick up where you left off.</p>
+    <div class="h-card-score h-pending h-unfinished-note"><span class="h-pending-icon">{{ ui_icon("play", 22) }}</span><span class="h-band"><b class="h-band-name">Unfinished</b><small>Pick up where you left off</small></span></div>
     <div class="h-action-row">
       <a href="{{ url_for('interview', interview_id=i.interview_id) }}" class="btn">Continue</a>
       <form method="POST" action="{{ url_for('cancel_interview', interview_id=i.interview_id) }}"

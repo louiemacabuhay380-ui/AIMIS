@@ -154,7 +154,7 @@
     <span class="brand-text"><span class="brand-name">AIMIS</span><span class="brand-tag">AI Mock Interview</span></span>
   {% if link %}</a>{% else %}</span>{% endif %}
 {% endmacro %}
-<body class="{{ 'has-sidebar' if with_sidebar else 'no-sidebar' }}">
+<body class="{{ 'has-sidebar' if with_sidebar else 'no-sidebar' }}{{ ' is-admin' if session.get('role') == 'admin' }}">
 {% from "_robot.html" import robot_defs %}{{ robot_defs() }}
 {% if with_sidebar %}
   {% set ep = request.endpoint or '' %}
@@ -206,7 +206,7 @@
       <nav class="site-nav">
         {# Setup pages (onboarding, consent): logo only. Interview room: profile only.
            The dark mode switch and Log out are in the dashboard sidebar. #}
-        {% if session.get('user_id') and request.endpoint not in ('welcome', 'privacy_consent', 'processing') %}
+        {% if session.get('user_id') and request.endpoint not in ('welcome', 'privacy_consent', 'processing', 'interview', 'device_check') %}
           {% if page_layout != 'focus' %}
             <a href="{{ url_for('admin_overview') if session.get('role') == 'admin' else url_for('dashboard') }}" class="nav-link nav-home">{{ ui_icon("home", 18) }} Home</a>
           {% endif %}

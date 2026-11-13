@@ -9,8 +9,46 @@
     <h1>My profile</h1>
     <p>AIMIS Bot uses this to fit your interview questions to you. It never affects your scores.</p>
   </div>
+  {% if not editing %}
+    <a href="{{ url_for('my_profile', edit=1) }}" class="btn" id="editProfile">{{ ui_icon("edit", 16) }} Edit profile</a>
+  {% endif %}
 </div>
 
+{% if not editing %}
+{# What the student picked, read-only. "Edit profile" opens the form. #}
+{% set work = dict(opts.work) %}{% set talks = dict(opts.interviews) %}{% set conf = dict(opts.confidence) %}
+{% macro row(label, value) %}
+  <div class="pv-row"><dt>{{ label }}</dt><dd>{{ value if value else '<span class="muted">Not set</span>'|safe }}</dd></div>
+{% endmacro %}
+<div class="profile-form">
+  <section class="card profile-section">
+    <h2>{{ ui_icon("users", 20) }} About you</h2>
+    <dl class="pv-list">
+      {{ row("Full name", session.full_name) }}
+      {{ row("Age", p.age) }}
+      {{ row("Course or program", p.course) }}
+      {{ row("What you are now", p.education_status) }}
+      {% if p.education_status == 'College student' %}{{ row("Year level", p.year_level) }}{% endif %}
+    </dl>
+  </section>
+  <section class="card profile-section">
+    <h2>{{ ui_icon("briefcase", 20) }} The job you want to pursue</h2>
+    <dl class="pv-list">{{ row("Target job", p.career_goal) }}</dl>
+  </section>
+  <section class="card profile-section">
+    <h2>{{ ui_icon("history", 20) }} Your experience</h2>
+    <dl class="pv-list">
+      {{ row("Work experience", work.get(p.work_experience)) }}
+      {{ row("Real job interviews before", talks.get(p.interview_experience)) }}
+      {{ row("Confidence in interviews", (p.interview_confidence ~ " of 4 · " ~ conf.get(p.interview_confidence|int)) if p.interview_confidence else None) }}
+      <div class="pv-row"><dt>Want to improve</dt><dd>
+        {% if p.focus %}<span class="pv-tags">{% for f in p.focus %}<span class="pv-tag">{{ f }}</span>{% endfor %}</span>
+        {% else %}<span class="muted">Not set</span>{% endif %}
+      </dd></div>
+    </dl>
+  </section>
+</div>
+{% else %}
 <form method="POST" class="profile-form">
   <section class="card profile-section">
     <h2>{{ ui_icon("users", 20) }} About you</h2>
@@ -27,9 +65,10 @@
   </section>
   <div class="profile-actions">
     <button type="submit" class="btn btn-lg">Save profile</button>
-    <a href="{{ url_for('dashboard') }}" class="btn btn-outline btn-lg">Cancel</a>
+    <a href="{{ url_for('my_profile') }}" class="btn btn-outline btn-lg">Cancel</a>
   </div>
 </form>
 
 {{ form_script() }}
+{% endif %}
 {% endblock %}

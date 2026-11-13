@@ -4,19 +4,18 @@
 {% from "_robot.html" import robot %}
 {% block layout %}focus{% endblock %}
 {% block content %}
+<div class="processing-wrap">
 <div class="card processing">
   <div class="processing-bot">{{ robot("thinking") }}</div>
   <div class="spinner" id="spinner"></div>
-  <h1>AIMIS Bot is reviewing your interview...</h1>
-  <p id="status" class="muted">AIMIS is transcribing your answers and evaluating your interview.
-    This can take up to a minute. Please don't close this page.</p>
-  <p id="timer" class="muted"></p>
+  <h1>Getting your results ready</h1>
+  <p id="status" class="muted">This takes about a minute.<br>Please keep this page open.</p>
   <button id="retryBtn" type="button" class="btn" hidden>Try again</button>
+</div>
 </div>
 
 <script>
 const statusEl = document.getElementById("status");
-const timerEl = document.getElementById("timer");
 const retryBtn = document.getElementById("retryBtn");
 const spinner = document.getElementById("spinner");
 const processUrl = "{{ url_for('run_processing', interview_id=iv.interview_id) }}";
@@ -26,14 +25,12 @@ let seconds = 0, timerId;
 async function run() {
   retryBtn.hidden = true;
   spinner.hidden = false;
-  statusEl.textContent = "AIMIS is transcribing your answers and evaluating your interview. This can take up to a minute. Please don't close this page.";
+  statusEl.textContent = "This takes about a minute. Please keep this page open.";
   seconds = 0;
   clearInterval(timerId);
   timerId = setInterval(() => {
     seconds++;
-    timerEl.textContent = "Elapsed: " + seconds + "s";
-    if (seconds === 60) statusEl.textContent = "Still working. When Gemini's limit is reached, AIMIS uses the offline AI on this " +
-      "computer instead, which can take a few minutes. Please keep this page open.";
+    if (seconds === 60) statusEl.textContent = "Almost there. This can take a few more minutes. Please keep this page open.";
   }, 1000);
   try {
     const res = await fetch(processUrl, { method: "POST" });
@@ -42,7 +39,8 @@ async function run() {
       window.location.href = summaryUrl;
       return;
     }
-    statusEl.textContent = data.error;
+    statusEl.textContent = "We couldn't finish your results. Your answers are saved. Please try again.";
+    console.warn("AIMIS processing:", data.error);
   } catch (e) {
     statusEl.textContent = "Connection problem. Your answers are saved. Please try again.";
   }

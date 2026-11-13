@@ -4,26 +4,38 @@ work and interview experience, and what they want to improve.
 The interviewer uses it as background (e.g. "a 4th-year IT student with OJT experience who has never had a real
 job interview"), so its questions fit the student. It is never used for scoring.
 """
+import re
+
+import account_actions
 import careers
 
 AGE_MIN, AGE_MAX = 15, 70
 
-STATUS = ["Senior high school student", "College student", "Fresh graduate", "Working professional",
-          "Career shifter / returning to work"]
-YEAR_LEVELS = ["1st year", "2nd year", "3rd year", "4th year", "5th year"]
+# At most 4 choices per question (adviser); anything else is typed in under "Others"
+OTHERS = "Others"
+STATUS = ["Senior high school student", "College student", "Fresh graduate"]
+YEAR_LEVELS = ["1st year", "2nd year", "3rd year", "4th year"]
 WORK = [("none", "None yet"), ("ojt", "OJT or internship"), ("part_time", "Part-time job"),
         ("full_time", "Full-time job")]
 INTERVIEWS = [("never", "Never"), ("few", "1 to 2 times"), ("many", "3 times or more")]
 # 4 levels, no neutral middle (same as the paper's Likert scale)
 CONFIDENCE = [(1, "Not confident"), (2, "Slightly confident"), (3, "Fairly confident"), (4, "Very confident")]
-FOCUS = ["Answering clearly and directly", "Giving specific examples (STAR)", "Speaking confidently",
-         "Fewer \"um\" and \"uh\"", "Eye contact", "Body language and gestures", "Handling difficult questions",
-         "Introducing myself"]
+FOCUS = ["Speaking confidently", "Eye contact and body language", "Clear, specific answers"]
+CAREERS_SHOWN = 3            # the first 3 career goals as cards; any other job is typed in under "Others"
+OTHER_MAX = 60
+YEAR_OTHER_MAX = 20   # fits the year_level column (VARCHAR 20)
 MAX_FOCUS = 3
 COURSE_MAX = 100
 
 COLUMNS = ["age", "education_status", "course", "year_level", "work_experience", "interview_experience",
            "interview_confidence", "focus_areas"]
+
+
+def _typed(value, minimum=2):
+    """Text typed under "Others": letters, numbers and simple punctuation, at most 60 characters."""
+    value = " ".join(str(value or "").split())[:OTHER_MAX]
+    value = re.sub(r"[^A-Za-zÀ-ÿñÑ0-9 &/,.()'+-]", "", value).strip(" .,-")
+    return value if len(value) >= minimum else ""
 
 
 def _label(options, key):
@@ -41,12 +53,23 @@ def from_form(form):
         age = None
         problems.append(f"Enter your age ({AGE_MIN} to {AGE_MAX}).")
     status = form.get("education_status", "")
-    if status not in STATUS:
+    if status == OTHERS:
+        status = _typed(form.get("education_status_other"))[:40] or None
+        if not status:
+            problems.append('Type what you are now under "Others" (e.g. Working professional).')
+    elif status not in STATUS:
         status = None
-        problems.append("Choose what you are now (student, graduate, working...).")
+        problems.append("Choose what you are now.")
     course = " ".join(str(form.get("course", "")).split())[:COURSE_MAX] or None
     year = form.get("year_level", "")
-    year = year if status == "College student" and year in YEAR_LEVELS else None
+    if status != "College student":
+        year = None
+    elif year == OTHERS:
+        year = _typed(form.get("year_level_other"))[:YEAR_OTHER_MAX] or None
+        if not year:
+            problems.append('Type your year level under "Others" (e.g. 5th year).')
+    elif year not in YEAR_LEVELS:
+        year = None
     work = form.get("work_experience", "")
     if work not in dict(WORK):
         work = None
@@ -62,8 +85,16 @@ def from_form(form):
     except ValueError:
         confidence = None
         problems.append("Choose how confident you feel in job interviews.")
-    focus = [f for f in form.getlist("focus_areas") if f in FOCUS][:MAX_FOCUS] if hasattr(form, "getlist") else []
+    picked = form.getlist("focus_areas") if hasattr(form, "getlist") else []
+    focus = [f for f in picked if f in FOCUS]
+    if OTHERS in picked:
+        typed = _typed(form.get("focus_other"))
+        if typed:
+            focus.append(typed)
+    focus = focus[:MAX_FOCUS]
     career = careers.from_form(form)
+    if career and career not in careers.NAMES:
+        career = account_actions.match_career(career)      # "teacher" -> "Teaching and education"
     if not career:
         problems.append("Choose the job you want to pursue (or type it in, at least 3 letters).")
     profile = {"age": age, "education_status": status, "course": course, "year_level": year,
@@ -119,4 +150,5 @@ def save(cursor, user_id, profile, career):
 def options():
     return {"status": STATUS, "years": YEAR_LEVELS, "work": WORK, "interviews": INTERVIEWS,
             "confidence": CONFIDENCE, "focus": FOCUS, "max_focus": MAX_FOCUS, "age_min": AGE_MIN,
-            "age_max": AGE_MAX, "course_max": COURSE_MAX}
+            "age_max": AGE_MAX, "course_max": COURSE_MAX, "others": OTHERS, "careers_shown": CAREERS_SHOWN,
+            "other_max": OTHER_MAX, "year_other_max": YEAR_OTHER_MAX}

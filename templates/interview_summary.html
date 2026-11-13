@@ -407,84 +407,83 @@
 {# ---- Each question and answer: a list of questions, and one answer shown at a time ---- #}
 </div>
 
-<div class="bento bento-report report-panel answers-panel" data-panel="answers">
-<section class="tile answer-list-tile">
-  <h2>{{ 'Answers' if admin_view else 'Your answers' }}</h2>
-  <p class="muted small">{% if admin_view %}Transcripts and recordings are private to the student.{% else %}Pick a question to see your answer and feedback.{% endif %}</p>
-  <nav class="answer-nav" aria-label="Questions">
-    {% for a in answers %}
-      {% set weak = a.skills | selectattr("rating", "equalto", "weak") | list %}
-      <a href="#q{{ a.question_order }}" class="answer-link" data-q="q{{ a.question_order }}">
-        <span class="an-top">
-          <b>Q{{ a.question_order }}</b>
-          {% if a.parent_iq_id %}<span class="followup-tag">Follow-up</span>{% elif a.question_source == 'opener' %}<span class="followup-tag">Introduction</span>{% endif %}
-          {% if weak %}<span class="an-weak" title="Weak sub-skills">{{ weak | length }} weak</span>{% endif %}
-        </span>
-        <span class="an-text">{% if admin_view and (a.parent_iq_id or a.question_source == 'live') %}Written live (hidden){% else %}{{ a.question_text | truncate(70) }}{% endif %}</span>
-        {% if a.answer_score is number %}
-          <span class="an-scores">Answer <b class="lvl-{{ score_level(a.answer_score) }}">{{ "%.0f" | format(a.answer_score) }}%</b>{% if a.delivery_score is number %} · Delivery <b class="lvl-{{ score_level(a.delivery_score) }}">{{ "%.0f" | format(a.delivery_score) }}%</b>{% endif %}</span>
-        {% endif %}
-      </a>
-    {% endfor %}
-  </nav>
-</section>
-
-<section class="tile answer-detail-tile" id="panel-answers">
+<div class="report-panel answers-panel" data-panel="answers">
+<section class="tile chat-thread" id="panel-answers" aria-label="{{ 'Answers' if admin_view else 'Your answers' }}">
+  <header class="chat-thread-head">
+    <h2>{{ 'Answers' if admin_view else 'Your answers' }}</h2>
+    <p class="muted small">{% if admin_view %}Transcripts and recordings are private to the student.{% else %}Your interview as a conversation, with AIMIS Bot's feedback after each answer.{% endif %}</p>
+  </header>
   {% for a in answers %}
     {% set parts = [a.relevance_score, a.clarity_score, a.completeness_score, a.grammar_score] | select("number") | list %}
-    <article class="answer-pane" id="pane-q{{ a.question_order }}" data-q="q{{ a.question_order }}">
-      <header class="answer-head pane-head">
-        <h3>Q{{ a.question_order }}.{% if a.parent_iq_id %} <span class="followup-tag">Follow-up on Q{{ a.parent_order }}</span>{% elif a.question_source == 'opener' %} <span class="followup-tag">Introduction</span>{% endif %}
-          {% if admin_view and (a.parent_iq_id or a.question_source == 'live') %}<span class="muted">(written live from the student's answers: hidden for privacy)</span>{% else %}{{ a.question_text }}{% endif %}</h3>
-        {% set weak = a.skills | selectattr("rating", "equalto", "weak") | list %}
-        {% if weak %}<span class="weak-count">{{ weak | length }} weak skill{{ 's' if weak | length > 1 }}</span>{% endif %}
-        {% if a.answer_score is number %}
-          <span class="answer-score" title="Answer Effectiveness">Answer {{ "%.0f" | format(a.answer_score) }}%</span>
-          {% if a.delivery_score is number %}<span class="answer-score answer-score-2" title="Communication Delivery">Delivery {{ "%.0f" | format(a.delivery_score) }}%</span>{% endif %}
-        {% elif parts %}<span class="answer-score">{{ "%.0f" | format((parts | sum) / (parts | length)) }}%</span>{% endif %}
-      </header>
-      {% if not admin_view %}<p class="transcript">{{ a.transcript or "(no answer)" }}</p>{% endif %}
+    {% set weak = a.skills | selectattr("rating", "equalto", "weak") | list %}
+    <div class="chat-turn" id="q{{ a.question_order }}" data-q="q{{ a.question_order }}">
 
-      {# ---- Personal feedback on this exact answer ---- #}
+      {# AIMIS Bot asks #}
+      <div class="msg msg-bot">
+        <span class="msg-avatar" aria-hidden="true">{{ robot("happy") }}</span>
+        <div class="msg-body">
+          <span class="msg-meta">AIMIS Bot · Q{{ a.question_order }}{% if a.parent_iq_id %} · Follow-up on Q{{ a.parent_order }}{% elif a.question_source == 'opener' %} · Introduction{% endif %}</span>
+          <div class="bubble bubble-bot">
+            {% if admin_view and (a.parent_iq_id or a.question_source == 'live') %}<span class="muted">(written live from the student's answers: hidden for privacy)</span>{% else %}{{ a.question_text }}{% endif %}
+          </div>
+        </div>
+      </div>
+
+      {# The student answers #}
+      <div class="msg msg-me">
+        <div class="msg-body">
+          <span class="msg-meta">{{ 'Student' if admin_view else 'You' }}</span>
+          <div class="bubble bubble-me">
+            {% if admin_view %}<span class="bubble-private">Answer is private to the student</span>{% else %}{{ a.transcript or "(no answer)" }}{% endif %}
+          </div>
+          {% if a.audio_path %}
+            <audio controls preload="none" src="{{ url_for('audio_file', filename=a.audio_path.split('/')[-1]) }}"></audio>
+          {% elif a.transcript and not admin_view %}
+            <span class="msg-note">Voice recording deleted after {{ recording_days }} days. The transcript and scores are kept.</span>
+          {% endif %}
+          <span class="msg-scores">
+            {% if weak %}<span class="weak-count">{{ weak | length }} weak skill{{ 's' if weak | length > 1 }}</span>{% endif %}
+            {% if a.answer_score is number %}
+              <span class="answer-score" title="Answer Effectiveness">Answer {{ "%.0f" | format(a.answer_score) }}%</span>
+              {% if a.delivery_score is number %}<span class="answer-score answer-score-2" title="Communication Delivery">Delivery {{ "%.0f" | format(a.delivery_score) }}%</span>{% endif %}
+            {% elif parts %}<span class="answer-score">{{ "%.0f" | format((parts | sum) / (parts | length)) }}%</span>{% endif %}
+          </span>
+        </div>
+      </div>
+
+      {# AIMIS Bot's feedback on this exact answer #}
       {% set mine = (fb.feedback_items if fb and fb.feedback_items else []) | selectattr("answer_no", "equalto", a.question_order) | list %}
       {% set good = mine | selectattr("kind", "equalto", "answer_good") | list %}
       {% set fixes = mine | selectattr("kind", "equalto", "answer_fix") | list %}
       {% set spoke = mine | selectattr("kind", "equalto", "delivery") | list %}
       {% if a.skills or good or fixes or a.answer_feedback %}
-        <div class="answer-coach">
-          {% if a.skills %}
-            <div class="skill-list">
-              {% for sk in a.skills %}
-                <div class="skill-row">
-                  <span class="skill-tag {{ sk.rating }}">{{ sk.skill }} · {{ sk.rating | capitalize }}</span>
-                  {% if sk.reason %}<span class="skill-reason">{{ sk.reason }}</span>{% endif %}
-                </div>
-              {% endfor %}
-            </div>
-          {% endif %}
-          {% if good or fixes %}
-            <div class="fb-cols answer-cards">
-              <div>{% for i in good %}{{ fb_card(i, "What worked") }}{% else %}<p class="muted small">Nothing in this answer stood out as a strength yet.</p>{% endfor %}</div>
-              <div>{% for i in fixes %}{{ fb_card(i, "What to fix") }}{% endfor %}</div>
-            </div>
-            {% for i in spoke %}{{ fb_card(i, "How you spoke and looked") }}{% endfor %}
-          {% else %}
-            {# Interviews scored before the card format #}
-            {% if a.answer_feedback %}<p><b>Feedback:</b> {{ a.answer_feedback }}</p>{% endif %}
-            {% if a.weak_quote and not admin_view %}<p class="weak-quote"><b>Weakest part:</b> “{{ a.weak_quote }}”</p>{% endif %}
-            {% if a.better_answer %}<p><b>A stronger answer would:</b> {{ a.better_answer }}</p>{% endif %}
-          {% endif %}
-        </div>
-      {% endif %}
-
-      {% if not a.audio_path and a.transcript and not admin_view %}
-        <p class="muted small">No voice recording is stored for this answer (recordings are deleted automatically after {{ recording_days }} days). The transcript and scores are kept.</p>
-      {% endif %}
-      {% if a.audio_path %}
-        <audio controls preload="none" src="{{ url_for('audio_file', filename=a.audio_path.split('/')[-1]) }}"></audio>
-      {% endif %}
-
-      <details class="measures">
+      <div class="msg msg-bot msg-feedback">
+        <span class="msg-avatar" aria-hidden="true">{{ robot("happy") }}</span>
+        <div class="msg-body">
+          <span class="msg-meta">AIMIS Bot · Feedback</span>
+          <div class="bubble bubble-bot bubble-coach">
+            {% if a.skills %}
+              <div class="skill-list">
+                {% for sk in a.skills %}
+                  <div class="skill-row">
+                    <span class="skill-tag {{ sk.rating }}">{{ sk.skill }} · {{ sk.rating | capitalize }}</span>
+                    {% if sk.reason %}<span class="skill-reason">{{ sk.reason }}</span>{% endif %}
+                  </div>
+                {% endfor %}
+              </div>
+            {% endif %}
+            {% if good or fixes %}
+              <div class="fb-cols answer-cards">
+                <div>{% for i in good %}{{ fb_card(i, "What worked") }}{% else %}<p class="muted small">Nothing in this answer stood out as a strength yet.</p>{% endfor %}</div>
+                <div>{% for i in fixes %}{{ fb_card(i, "What to fix") }}{% endfor %}</div>
+              </div>
+              {% for i in spoke %}{{ fb_card(i, "How you spoke and looked") }}{% endfor %}
+            {% else %}
+              {% if a.answer_feedback %}<p><b>Feedback:</b> {{ a.answer_feedback }}</p>{% endif %}
+              {% if a.weak_quote and not admin_view %}<p class="weak-quote"><b>Weakest part:</b> “{{ a.weak_quote }}”</p>{% endif %}
+              {% if a.better_answer %}<p><b>A stronger answer would:</b> {{ a.better_answer }}</p>{% endif %}
+            {% endif %}
+            <details class="measures">
       <summary>All measurements for this answer</summary>
       <div class="chips">
         {% if a.directness_score is number %}
@@ -528,11 +527,12 @@
           <span>Keywords <b>{{ a.keywords_found or "none" }}</b></span>
         {% endif %}
       </div>
-      </details>
-      {% if not loop.last %}
-        <a class="btn btn-sm btn-outline next-answer" href="#q{{ answers[loop.index].question_order }}">Next question →</a>
+            </details>
+          </div>
+        </div>
+      </div>
       {% endif %}
-    </article>
+    </div>
   {% endfor %}
 </section>
 </div>
@@ -559,8 +559,6 @@
     const panels = [...document.querySelectorAll(".report-panel")];
     const tabs = [...document.querySelectorAll(".report-tabs a")];
 
-    const panes = [...document.querySelectorAll(".answer-pane")];
-    const links = [...document.querySelectorAll(".answer-link")];
     if (!panels.length) return;
     document.body.classList.add("report-tabbed");
 
@@ -570,19 +568,20 @@
       tabs.forEach(t => { const on = t.dataset.tab === name; t.classList.toggle("on", on); t.setAttribute("aria-current", on ? "page" : "false"); });
     }
     function showAnswer(id) {
-      if (!panes.some(p => p.dataset.q === id) && panes.length) id = panes[0].dataset.q;
-      panes.forEach(p => p.hidden = p.dataset.q !== id);
-      links.forEach(l => l.classList.toggle("on", l.dataset.q === id));
+      const turn = document.getElementById(id);
+      if (!turn) return;
+      document.querySelectorAll(".chat-turn.is-focus").forEach(t => t.classList.remove("is-focus"));
+      turn.classList.add("is-focus");
+      setTimeout(() => turn.scrollIntoView({ block: "start", behavior: "smooth" }), 50);
     }
     function fromHash(scroll) {
       const h = location.hash.slice(1);
-      if (/^q\d+$/.test(h)) { showPanel("answers"); showAnswer(h); }
+      if (/^q\d+$/.test(h)) { showPanel("answers"); showAnswer(h); return; }
       else if (h === "sec-feedback") showPanel("feedback");
       else if (h === "sec-answers") { showPanel("answers"); }
       else showPanel("scores");
       if (scroll) document.querySelector(".report-tabs").scrollIntoView({ block: "start", behavior: "smooth" });
     }
-    showAnswer(panes.length ? panes[0].dataset.q : null);
     fromHash(false);
     window.addEventListener("hashchange", () => fromHash(true));
   })();
