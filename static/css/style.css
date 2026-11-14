@@ -3265,3 +3265,44 @@ body.is-admin .label-line span:last-child { white-space: nowrap; flex-shrink: 0;
 [data-theme="dark"] .iv-chat .btn.btn-outline { color: var(--rc-text); border-color: rgba(255, 255, 255, 0.3); }
 /* light mode: the "Listening..." placeholder is readable on the white answer bubble */
 .iv-chat .bubble.user .transcript-live { color: var(--text); }
+
+/* Onboarding: welcome page before step 1 */
+.onboard-intro .setup-welcome { margin-bottom: 10px; }
+.onboard-intro .onboard-lead { max-width: 640px; font-size: 16.5px; line-height: 1.6; margin-bottom: 22px; }
+.intro-points { list-style: none; margin: 0 0 20px; padding: 0; display: grid; gap: 12px; max-width: 680px; }
+.intro-points li { display: flex; align-items: center; gap: 16px; padding: 14px 18px; border-radius: 18px;
+  background: var(--surface-2); border: 1px solid var(--border); }
+.intro-points b { display: block; font-size: 16px; margin-bottom: 2px; }
+.intro-points small { color: var(--muted); font-size: 14.5px; line-height: 1.5; }
+.intro-icon { width: 46px; height: 46px; border-radius: 14px; flex-shrink: 0; display: grid; place-items: center;
+  background: var(--primary-soft); color: var(--primary); }
+[data-theme="dark"] .intro-icon { color: #85c1e9; }
+.intro-note { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14.5px; margin: 0; }
+.intro-note svg { color: var(--primary); flex-shrink: 0; }
+
+/* Report: Communication Delivery checklist (rubric v3) */
+.delivery-check { margin: 6px 0 16px; padding-top: 14px; border-top: 1px solid var(--border); }
+.delivery-check h3 { margin: 0 0 4px; font-size: 18px; }
+.check-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+.check-col { padding: 14px 16px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--border); }
+.check-col h4 { margin: 0 0 10px; font-size: 15px; display: flex; justify-content: space-between; gap: 8px; }
+.check-score { color: var(--primary); font-weight: 800; white-space: nowrap; }
+[data-theme="dark"] .check-score { color: #85c1e9; }
+.check-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.check-list li { display: flex; gap: 10px; align-items: flex-start; }
+.check-mark { width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center;
+  font-size: 13px; font-weight: 800; }
+.check-yes .check-mark { background: var(--fb-good-bg); color: var(--good); border: 1px solid var(--fb-good-line); }
+.check-no .check-mark { background: var(--fb-warn-bg); color: #b45309; border: 1px solid var(--fb-warn-line); }
+[data-theme="dark"] .check-no .check-mark { color: var(--warn); }
+.check-na .check-mark { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+.check-text b { display: block; font-size: 14.5px; }
+.check-text small { color: var(--muted); font-size: 13px; }
+@media (max-width: 860px) { .check-cols { grid-template-columns: 1fr; } }
+.rubric-help .rubric-sub { margin: 14px 0 6px; font-size: 14px; font-weight: 700; }
+/* checklist: orange = almost, red = not met (same colors as the score labels) */
+.check-no .check-mark { background: #fdf0f0; color: var(--danger); border-color: #f6d4d4; }
+.check-near .check-mark { background: var(--fb-warn-bg); color: #b45309; border: 1px solid var(--fb-warn-line); }
+[data-theme="dark"] .check-no .check-mark { background: #351c1f; border-color: #522a2e; color: #f87171; }
+[data-theme="dark"] .check-near .check-mark { color: var(--warn); }
+.rubric-help .rubric-math { margin: 12px 0 18px; }

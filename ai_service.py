@@ -104,6 +104,9 @@ Listen to the audio and return only JSON in exactly this format:
 
 - transcript: exactly what the candidate said, word for word, including filler words like
   "um" and "uh". Do not correct or improve it. If nothing understandable is said, use "".
+  The candidate is the main voice, closest to the microphone. Leave out anything else you can hear:
+  other people talking in the background, TV, music, the interviewer's voice from the speakers.
+  Do not guess words you can't hear clearly, and never invent words to fill noise.
 - filler_word_count: number of filler words, in English or Filipino (um, uh, er, ah, eh,
   "you know", "like" used as filler, ano, parang, kasi, 'yung, ganun, diba used as filler)
 - pause_count: number of noticeable pauses or hesitations of about 2 seconds or more
@@ -342,15 +345,16 @@ def transcribe_answer(question_text, audio_bytes):
 
 
 # ---------------------------------------------------------------- live interviewer (panel comment 8)
-# The interview is a conversation, not a preset list: it opens by asking the candidate's name and about
-# themselves, and after every answer ONE AI call transcribes the answer and decides what the interviewer
+# The interview is a conversation, not a preset list: it opens by asking the candidate to tell a little about
+# themselves (not their name: AIMIS already knows it), and after every answer ONE AI call transcribes the answer and decides what the interviewer
 # says next: a short reply, then either a follow-up about that answer or the next main question, written
 # from the conversation so far.
 
-OPENING_QUESTION = "To start, may I know your name, and can you tell me a little about yourself?"
+OPENING_QUESTION = "To start, can you tell me a little about yourself?"
 
 LIVE_RULES = """You are AIMIS Bot, a friendly, professional job interviewer in a live mock interview.
 The candidate is applying for: {career}. The skill being practiced is "{category}" ({difficulty} level).
+The candidate's first name is {name} (from their account; you already know it, never ask for it).
 
 The conversation so far:
 {history}
@@ -364,7 +368,7 @@ The question you just asked was: "{question}"
   with reasons, a result, a lesson, or a specific detail), false if it doesn't (empty, very short, off-topic,
   "I don't know", or only general claims).
 - reply: what you say right after the answer, like a real interviewer in a conversation (at most 25 words, no question
-  mark). It shows you listened by mentioning one specific thing they said (use their first name if they gave it).
+  mark). It shows you listened by mentioning one specific thing they said (you may use their first name now and then, not in every reply).
   If you ask a follow_up, the reply only acknowledges the answer (the follow-up comes right after it).
   If you move on (follow_up is ""), the reply acknowledges the answer and adds a short natural bridge to the next
   topic, e.g. "Thanks, Ana, that gives me a good picture of your OJT. Let's talk about working under pressure."
@@ -412,6 +416,9 @@ LIVE_AUDIO_PROMPT = """Listen to the candidate's spoken answer and return only J
 
 - transcript: exactly what the candidate said, word for word, including filler words like
   "um" and "uh". Do not correct or improve it. If nothing understandable is said, use "".
+  The candidate is the main voice, closest to the microphone. Leave out anything else you can hear:
+  other people talking in the background, TV, music, the interviewer's voice from the speakers.
+  Do not guess words you can't hear clearly, and never invent words to fill noise.
 - filler_word_count: number of filler words, in English or Filipino (um, uh, er, ah, eh,
   "you know", "like" used as filler, ano, parang, kasi, 'yung, ganun, diba used as filler)
 - pause_count: number of noticeable pauses or hesitations of about 2 seconds or more
@@ -465,11 +472,12 @@ def _live_text_reply(transcript, fields):
 
 
 def live_turn(question_text, audio_bytes, career, category, difficulty, allow_follow_up,
-              need_next=False, history="", avoid=()):
+              need_next=False, history="", avoid=(), name=""):
     """Transcribe one answer and write what the interviewer says next.
     history: the conversation so far (earlier questions and answers). avoid: questions not to repeat.
     Returns the transcribe_answer() fields plus "reply", "follow_up" and "next_question" ("" when none)."""
     fields = {"career": career or "an entry-level job", "category": category, "difficulty": difficulty,
+              "name": name or "(not given)",
               "question": question_text, "history": history or "(this is the first question)"}
     fields["follow_rule"] = FOLLOW_ALLOWED if allow_follow_up else FOLLOW_BLOCKED
     fields["next_rule"] = NEXT_ALLOWED.format(
@@ -511,7 +519,7 @@ def live_turn(question_text, audio_bytes, career, category, difficulty, allow_fo
 # answer couldn't be processed live (so the next question is still written from the conversation).
 
 FIRST_QUESTION_PROMPT = """You are AIMIS Bot, a friendly, professional job interviewer. A returning candidate is starting
-a new mock interview with you, so do NOT ask their name or ask them to introduce themselves again.
+a new mock interview with you, so do NOT ask them to introduce themselves again.
 Candidate's first name: {name}
 Applying for: {career}. Skill to practice today: "{category}" ({difficulty} level).
 What the candidate said about themselves in an earlier interview:

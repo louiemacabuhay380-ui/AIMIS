@@ -129,13 +129,20 @@ def build_chunks(cursor, interview_id, load_report):
         def pct(key, missing="not measured"):
             return f"{_n(evaluation[key])}%" if evaluation.get(key) is not None else missing
         target = f" Target job: {iv['career_goal']}." if iv.get("career_goal") else ""
-        if evaluation.get("rubric_version") == scoring.RUBRIC_VERSION:
+        if evaluation.get("rubric_version") in scoring.SCORED_VERSIONS:
             profile = scoring.PROFILES.get(evaluation.get("performance_profile") or "")
             lines = [f"{head}. Summary of the whole interview ({len(answers)} questions).{target}",
                      f"Overall interview readiness {pct('overall_score')}: answer effectiveness "
                      f"{pct('response_quality_score')} (what was said), communication delivery "
-                     f"{pct('delivery_score')} (how it was said: verbal {pct('speech_performance_score')}, "
-                     f"nonverbal {pct('behavioral_score', 'not measured (no camera)')})."]
+                     f"{pct('delivery_score')} (how it was said: speech/voice {pct('speech_performance_score')}, "
+                     f"behavioral/body language {pct('behavioral_score', 'not measured (no camera)')})."]
+            for key, name in (("behavioral_section", "Behavioral"), ("speech_section", "Speech")):
+                sec = evaluation.get(key)
+                if sec and sec.get("score") is not None:
+                    met = [i["label"] for i in sec["items"] if i["met"] == 1]
+                    miss = [f"{i['label']} (target {i['target']})" for i in sec["items"] if i["met"] == 0]
+                    lines.append(f"{name} checklist: {sec['met']} of {sec['measured']} met. Met: {', '.join(met) or 'none'}. "
+                                 f"Not yet met: {', '.join(miss) or 'none'}.")
             if profile:
                 lines.append(f"Performance profile: {profile[0]}. {profile[1]}")
         else:
@@ -492,9 +499,9 @@ def student_facts(cursor, user_id, query):
             if r.get("delivery_score") is not None:
                 parts.append(f"communication delivery {_n(r['delivery_score'])}%")
             if r["speech_performance_score"] is not None:
-                parts.append(f"verbal delivery {_n(r['speech_performance_score'])}%")
+                parts.append(f"speech score {_n(r['speech_performance_score'])}%")
             if r["behavioral_score"] is not None:
-                parts.append(f"nonverbal delivery {_n(r['behavioral_score'])}%")
+                parts.append(f"behavioral score {_n(r['behavioral_score'])}%")
             lines.append(f"- {interview_label(r['category'], r['completed_at'])}, {r['difficulty']}: " + ", ".join(parts))
 
     tally = personal_feedback.skill_tally(cursor, user_id)

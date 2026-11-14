@@ -120,7 +120,7 @@
           <span><b>{{ n * 2 }}–{{ n * 3 }} min</b> in total</span>
         </div>
         <ol class="ready-steps">
-          <li><span class="ready-step-icon">{{ ui_icon("chat", 18) }}</span><b>AIMIS Bot asks</b><small>{% if adaptive and returning %}It asks questions based on your answers.{% elif adaptive %}It starts with your name, then asks based on your answers.{% else %}Each question is read out loud.{% endif %}</small></li>
+          <li><span class="ready-step-icon">{{ ui_icon("chat", 18) }}</span><b>AIMIS Bot asks</b><small>{% if adaptive and returning %}It asks questions based on your answers.{% elif adaptive %}It starts with a little about you, then asks based on your answers.{% else %}Each question is read out loud.{% endif %}</small></li>
           <li><span class="ready-step-icon">{{ ui_icon("mic", 18) }}</span><b>You answer out loud</b><small>{% if adaptive %}It listens, replies, and may ask a follow-up.{% else %}Recording starts by itself.{% endif %}</small></li>
           <li><span class="ready-step-icon">{{ ui_icon("spark", 18) }}</span><b>Get your feedback</b><small>Scores and tips after the last answer.</small></li>
         </ol>
@@ -160,6 +160,22 @@ const MP_ONLINE = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14"
 const MODELS_ONLINE = {
   face: "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
   hand: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+  pose: "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
+};
+
+// Behavioral formula (B2, B4-B7): how each behavior is detected. The pass/fail cutoffs are in thresholds.py.
+const BEHAVIOR_SETTINGS = {
+  nodDegrees: 7,          // B2: the head dips (or lifts) at least this much from where it was...
+  nodReturn: 3,           // ...and comes back within this many degrees...
+  nodMaxMs: 1200,         // ...within this time = one nod
+  gestureGapFrames: 2,    // B4: a new gesture after at least this many still frames (0.4 s)
+  fidgetGapFrames: 3,     // B7: a new touch or jerky movement after this many calm frames (0.6 s)
+  maxBodyTurn: 30,        // B6: shoulders turned this many degrees or less = facing the camera
+  maxShoulderTilt: 12,    // B5: shoulders level within this many degrees
+  minHeadHeight: 0.45,    // B5: nose above the shoulder line by this share of the shoulder width (not slumped)
+  leanBackShrink: 0.85,   // B5: body or face smaller than this share of its size at the start = leaning back
+  slumpDrop: 0.08,        // B5 (face only): face dropped this much of the picture below where it started
+  maxHeadDown: 20,        // B5 (face only): head bowed more than this = slouching
 };
 
 // Eye contact rules (tune these after testing with your group)
@@ -169,7 +185,7 @@ const EYES_AWAY = 0.55;      // 0-1: how strongly both eyes must look away to co
 
 const video = document.getElementById("selfView");
 const SAMPLE_MS = 200;   // analyze 5 frames per second
-let face = null, hands = null, timer = null, stats = null;
+let face = null, hands = null, pose = null, timer = null, stats = null;
 let lastWrists = {};     // last position of each hand (Left / Right), used to detect gestures
 let recent = [];         // the last 2 seconds of frames, used for live tips
 
@@ -177,7 +193,60 @@ function emptyStats() {
   return { frames: 0, faceFrames: 0, eyeContactFrames: 0, smileFrames: 0,
            frownFrames: 0, gestureFrames: 0,
            handFrames: 0, expressiveFrames: 0, faceTouchFrames: 0, fastFrames: 0,
-           speakingFrames: 0, speakingGestureFrames: 0 };
+           speakingFrames: 0, speakingGestureFrames: 0,
+           // behavioral formula
+           nods: 0, gestureEvents: 0, fidgetEvents: 0, postureFrames: 0, uprightFrames: 0,
+           orientFrames: 0, facingFrames: 0, poseFrames: 0,
+           stillRun: 99, calmTouchRun: 99, calmFastRun: 99,
+           pitchHist: [], nodFrom: null, lastNodAt: 0, startSizes: [], startFace: [] };
+}
+function median(a) { const b = [...a].sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : 0; }
+// Head up/down angle with its sign (for nods)
+function headPitch(matrix) {
+  const m = matrix.data;
+  return Math.atan2(m[6], m[10]) * 180 / Math.PI;
+}
+// B2: a nod is a quick dip (or lift) of the head that comes back
+function trackNod(pitch, now) {
+  const S = BEHAVIOR_SETTINGS, h = stats.pitchHist;
+  if (stats.nodFrom === null) {
+    const base = h.length >= 4 ? median(h.slice(-8)) : pitch;
+    if (h.length >= 4 && Math.abs(pitch - base) >= S.nodDegrees) stats.nodFrom = { base, at: now };
+    else { h.push(pitch); if (h.length > 15) h.shift(); }
+  } else if (now - stats.nodFrom.at > S.nodMaxMs) {
+    stats.nodFrom = null; h.length = 0;                       // held the head there: not a nod
+  } else if (Math.abs(pitch - stats.nodFrom.base) <= S.nodReturn) {
+    if (now - stats.lastNodAt > 600) { stats.nods++; stats.lastNodAt = now; }
+    stats.nodFrom = null;
+  }
+}
+// B5, B6 with the body model: shoulders level, head up, facing the camera, not leaning back
+function judgeBody(p) {
+  const S = BEHAVIOR_SETTINGS;
+  const lm = p.landmarks && p.landmarks[0], w = p.worldLandmarks && p.worldLandmarks[0];
+  if (!lm || !w) return null;
+  const L = lm[11], R = lm[12], nose = lm[0];
+  if ((L.visibility || 0) < 0.5 || (R.visibility || 0) < 0.5) return null;
+  const width = Math.hypot(L.x - R.x, L.y - R.y) || 1e-6;
+  const tilt = Math.atan2(Math.abs(L.y - R.y), Math.abs(L.x - R.x)) * 180 / Math.PI;
+  const headUp = ((L.y + R.y) / 2 - nose.y) / width;
+  if (stats.startSizes.length < 5) stats.startSizes.push(width);
+  const leanBack = stats.startSizes.length >= 5 && width < median(stats.startSizes) * S.leanBackShrink;
+  const turn = Math.atan2(Math.abs(w[11].z - w[12].z), Math.abs(w[11].x - w[12].x) || 1e-6) * 180 / Math.PI;
+  return { upright: tilt <= S.maxShoulderTilt && headUp >= S.minHeadHeight && !leanBack, facing: turn <= S.maxBodyTurn };
+}
+// B5, B6 without the body model: estimated from the head (bowed head, face dropping or shrinking = slouching)
+function judgeBodyFromFace(f, lm) {
+  const S = BEHAVIOR_SETTINGS, box = boxOf(lm);
+  const size = box.x1 - box.x0, centerY = (box.y0 + box.y1) / 2;
+  if (stats.startFace.length < 5) stats.startFace.push({ size, centerY });
+  const start = stats.startFace.length >= 5 ? { size: median(stats.startFace.map(s => s.size)),
+                                                centerY: median(stats.startFace.map(s => s.centerY)) } : null;
+  const matrix = f.facialTransformationMatrixes && f.facialTransformationMatrixes[0];
+  const a = matrix && matrix.data ? headAngles(matrix) : { turn: 0, tilt: 0 };
+  const upright = a.tilt <= S.maxHeadDown &&
+    !(start && (size < start.size * S.leanBackShrink || centerY > start.centerY + S.slumpDrop));
+  return { upright, facing: a.turn <= MAX_HEAD_TURN };
 }
 function blend(name, cats) {
   const c = cats.find(c => c.categoryName === name);
@@ -328,6 +397,20 @@ function analyzeFrame() {
     if (facingCamera && !lookingAway) { stats.eyeContactFrames++; frame.eye = true; }
     if ((blend("mouthSmileLeft", cats) + blend("mouthSmileRight", cats)) / 2 > 0.3) { stats.smileFrames++; frame.smile = true; }
     if ((blend("browDownLeft", cats) + blend("browDownRight", cats)) / 2 > 0.5) stats.frownFrames++;
+    const matrix = f.facialTransformationMatrixes && f.facialTransformationMatrixes[0];
+    if (matrix && matrix.data) trackNod(headPitch(matrix), now);
+  }
+  // Posture and body orientation: body model when available, otherwise estimated from the face
+  let body = null;
+  if (pose) {
+    try { body = judgeBody(pose.detectForVideo(video, now)); } catch (e) { body = null; }
+    if (body) stats.poseFrames++;
+  }
+  if (!body && f.faceLandmarks.length) body = judgeBodyFromFace(f, f.faceLandmarks[0]);
+  if (body) {
+    stats.postureFrames++; stats.orientFrames++;
+    if (body.upright) stats.uprightFrames++;
+    if (body.facing) stats.facingFrames++;
   }
 
   // Hands: expressive gestures vs. face touching. Each hand is tracked separately,
@@ -356,6 +439,13 @@ function analyzeFrame() {
   if (touching) stats.faceTouchFrames++;
   if (fast) stats.fastFrames++;
   if (expressive) { stats.expressiveFrames++; if (speaking) stats.speakingGestureFrames++; }
+  // B4: separate gestures (a gesture after a still moment); B7: separate touches and jerky movements
+  if (expressive) { if (stats.stillRun >= BEHAVIOR_SETTINGS.gestureGapFrames) stats.gestureEvents++; stats.stillRun = 0; }
+  else stats.stillRun++;
+  if (touching) { if (stats.calmTouchRun >= BEHAVIOR_SETTINGS.fidgetGapFrames) stats.fidgetEvents++; stats.calmTouchRun = 0; }
+  else stats.calmTouchRun++;
+  if (fast && !touching) { if (stats.calmFastRun >= BEHAVIOR_SETTINGS.fidgetGapFrames) stats.fidgetEvents++; stats.calmFastRun = 0; }
+  else if (!fast) stats.calmFastRun++;
   frame.touch = touching;
   frame.gesture = expressive;
 
@@ -374,6 +464,7 @@ function computeScores(s) {
   const fastRatio = s.fastFrames / s.frames;
   // While the user was speaking, how often did their hands help explain?
   const talkGesture = s.speakingFrames >= 10 ? s.speakingGestureFrames / s.speakingFrames : expressiveRatio;
+  const minutes = Math.max(s.frames * SAMPLE_MS / 60000, 0.05);       // time the camera was analyzed
 
   let expression = smileRatio >= 0.1 ? 100 : 70 + smileRatio * 300;   // some smiling is ideal
   expression = clamp(expression - frownRatio * 50);                   // frequent frowning lowers it
@@ -398,6 +489,13 @@ function computeScores(s) {
     hands_visible_ratio: +(handRatio * 100).toFixed(2),
     expressive_gesture_ratio: +(talkGesture * 100).toFixed(2),
     face_touch_ratio: +(touchRatio * 100).toFixed(2),
+    // behavioral formula: rates per minute and shares of time
+    nods_per_min: +(s.nods / minutes).toFixed(2),
+    gestures_per_min: +(s.gestureEvents / minutes).toFixed(2),
+    fidgets_per_min: +(s.fidgetEvents / minutes).toFixed(2),
+    upright_ratio: s.postureFrames ? +(s.uprightFrames / s.postureFrames * 100).toFixed(2) : null,
+    facing_ratio: s.orientFrames ? +(s.facingFrames / s.orientFrames * 100).toFixed(2) : null,
+    body_model: s.poseFrames > s.postureFrames / 2 ? "pose" : "face",
   };
 }
 
@@ -439,7 +537,7 @@ async function loadMediaPipe() {
   let lastError;
   for (const src of sources) {
     try {
-      const { FilesetResolver, FaceLandmarker, HandLandmarker } = await import(src.lib);
+      const { FilesetResolver, FaceLandmarker, HandLandmarker, PoseLandmarker } = await import(src.lib);
       const fileset = await FilesetResolver.forVisionTasks(src.wasm);
       face = await FaceLandmarker.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: src.face },
@@ -448,6 +546,16 @@ async function loadMediaPipe() {
       hands = await HandLandmarker.createFromOptions(fileset, {
         baseOptions: { modelAssetPath: src.hand },
         runningMode: "VIDEO", numHands: 2 });
+      // Body model for posture and orientation: optional (run download_mediapipe.py to save it on this computer)
+      for (const path of [MP_LOCAL + "/models/pose_landmarker_lite.task", MODELS_ONLINE.pose]) {
+        try {
+          pose = await PoseLandmarker.createFromOptions(fileset, {
+            baseOptions: { modelAssetPath: path }, runningMode: "VIDEO", numPoses: 1 });
+          console.info("Body model loaded: " + path);
+          break;
+        } catch (e) { pose = null; }
+      }
+      if (!pose) console.info("Body model not available: posture and orientation are estimated from the face.");
       console.info("Behavior analysis loaded from the " + src.name);
       return src.name;
     } catch (e) {
@@ -484,6 +592,11 @@ init();
 
 <!-- ======================= The interview session: robot voice, lip sync, recording ======================= -->
 <script>
+// Microphone: the browser's built-in clean-up (removes steady background noise and echo, evens out quiet mics).
+// voiceIsolation goes further on browsers that support it (focuses on the nearest voice); others ignore it.
+const MIC_SETTINGS = { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+                       voiceIsolation: true };
+
 const MAX_SECONDS = 180;
 const area = document.getElementById("interviewArea");
 const robotBox = document.getElementById("interviewer");
@@ -840,7 +953,7 @@ startBtn.onclick = async () => {
     return;
   }
   try {
-    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: MIC_SETTINGS });
   } catch (e) {
     statusEl.textContent = "Microphone access was blocked. Allow it in your browser, then try again.";
     return;
@@ -852,10 +965,10 @@ startBtn.onclick = async () => {
     intro = `Welcome back${area.dataset.name ? ", " + area.dataset.name : ""}! I'm AIMIS Bot, your interviewer again` +
             (career ? ` for the ${career} role` : "") +
             `. Today we'll talk about ${area.dataset.category.toLowerCase()}, and my questions will follow from your answers. Let's begin.`;
-  else if (adaptive) intro = `Hi, I'm AIMIS Bot, and I'll be your interviewer today` +
+  else if (adaptive) intro = `Hi${area.dataset.name ? ", " + area.dataset.name : ""}! I'm AIMIS Bot, and I'll be your interviewer today` +
                (career ? ` for the ${career} role` : "") +
-               `. This is a ${area.dataset.category} interview, and it's a conversation, so my questions will follow from your answers.`;
-  else intro = `Hi, I'm AIMIS Bot. Welcome to your ${area.dataset.category} mock interview` +
+               `. This is ${/^[aeiou]/i.test(area.dataset.category) ? "an" : "a"} ${area.dataset.category} interview, and it's a conversation, so my questions will follow from your answers.`;
+  else intro = `Hi${area.dataset.name ? ", " + area.dataset.name : ""}! I'm AIMIS Bot. Welcome to your ${area.dataset.category} mock interview` +
                (career ? `, for your target job: ${career}` : "") +
                `. I'll ask you ${total} question${total > 1 ? "s" : ""}. Let's begin.`;
   askQuestion(intro);
@@ -962,7 +1075,7 @@ async function onRecordingStopped() {
   try {
     const wav = await toWav(new Blob(chunks, { type: recorder.mimeType }));
     if (seconds < 2) throw new Error("too short");
-    pendingUpload = { wav, behavior: behaviorResult, id: current.id };
+    pendingUpload = { wav, gain: lastGain, behavior: behaviorResult, id: current.id };
     upload();
   } catch (e) {
     answerText.textContent = "That recording was too short. Let's try again.";
@@ -978,6 +1091,7 @@ async function upload() {
   const form = new FormData();
   form.append("interview_question_id", pendingUpload.id);
   form.append("audio", pendingUpload.wav, "answer.wav");
+  form.append("gain", String(pendingUpload.gain || 1));
   if (pendingUpload.behavior) form.append("behavior", JSON.stringify(pendingUpload.behavior));
   let data;
   try {
@@ -1030,10 +1144,38 @@ window.addEventListener("beforeunload", e => {
   if (state === "recording" || state === "saving") { e.preventDefault(); e.returnValue = ""; }
 });
 
+// Keep only the human-voice range (cuts low hum, desk bumps, fan rumble and high hiss) and bring a quiet
+// microphone up to a clear level, so the voice is transcribed more accurately. Falls back to the raw audio.
+let lastGain = 1;
+async function cleanSpeech(audio) {
+  try {
+    const off = new OfflineAudioContext(1, audio.length, audio.sampleRate);
+    const src = off.createBufferSource(); src.buffer = audio;
+    const low = off.createBiquadFilter(); low.type = "highpass"; low.frequency.value = 85;     // hum and rumble
+    const high = off.createBiquadFilter(); high.type = "lowpass"; high.frequency.value = 7000; // hiss
+    src.connect(low); low.connect(high); high.connect(off.destination); src.start();
+    const out = await off.startRendering();
+    const d = out.getChannelData(0);
+    let peak = 0;
+    for (let i = 0; i < d.length; i++) { const a = Math.abs(d[i]); if (a > peak) peak = a; }
+    lastGain = 1;
+    if (peak > 0.02 && peak < 0.7) {                       // too quiet: raise it (never above 0.9, never 8x)
+      const gain = Math.min(0.9 / peak, 8);
+      for (let i = 0; i < d.length; i++) d[i] *= gain;
+      lastGain = gain;                                     // sent with the answer, so the volume score uses the real level
+    }
+    return out;
+  } catch (e) {
+    console.warn("Audio clean-up skipped:", e);
+    return audio;
+  }
+}
+
 // Convert the browser recording into a mono 16-bit WAV file that Gemini can read
 async function toWav(blob) {
   const ctx = new AudioContext({ sampleRate: 16000 });
-  const audio = await ctx.decodeAudioData(await blob.arrayBuffer());
+  const raw = await ctx.decodeAudioData(await blob.arrayBuffer());
+  const audio = await cleanSpeech(raw);
   const data = audio.getChannelData(0);
   const rate = audio.sampleRate;
   const buffer = new ArrayBuffer(44 + data.length * 2);

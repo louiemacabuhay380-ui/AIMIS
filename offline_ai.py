@@ -78,7 +78,10 @@ def _audio_array(audio_bytes):
 def _transcribe_local(audio_bytes):
     start = time.perf_counter()
     segments, info = _whisper_model().transcribe(
-        _audio_array(audio_bytes), beam_size=1, vad_filter=False,
+        _audio_array(audio_bytes), beam_size=1,
+        # Voice detection: noise-only stretches aren't transcribed (keeps short pauses and fillers)
+        vad_filter=True, vad_parameters={"min_silence_duration_ms": 700, "speech_pad_ms": 400},
+        condition_on_previous_text=False, no_speech_threshold=0.6,
         # Hinting fillers makes Whisper keep "um", "uh", "ano" instead of cleaning them away
         initial_prompt="Um, uh, ano, parang, so, like, I think, kasi, yung.")
     segments = list(segments)

@@ -52,10 +52,12 @@
 </div>
 
 <div class="bento bento-report report-panel" id="panel-scores" data-panel="scores">
-{% set v2 = evaluation and evaluation.rubric_version == rubric.version %}
+{% set v2 = evaluation and evaluation.rubric_version in rubric.versions %}
+{% set v3 = evaluation and evaluation.rubric_version == 'v3' %}
 {% if v2 %}
   {# ---------------- Rubric v2: two separate scores (scoring.py) ---------------- #}
-  {% set ow, dw = rubric.overall, rubric.delivery %}
+  {% set ow, dw = rubric.overall, (rubric.delivery if v3 else rubric.v2_delivery) %}
+  {% set sp_name, bh_name = ("Speech", "Behavioral") if v3 else ("Verbal", "Nonverbal") %}
   {% set prof = rubric.profiles.get(evaluation.performance_profile) %}
   <section class="tile tile-overall">
     {{ robot("happy") }}
@@ -80,8 +82,8 @@
       {% endif %}
       <p class="score-desc">{{ desc }}</p>
       {% if label == "Communication Delivery" %}
-        <p class="score-split">Verbal <b>{{ num(evaluation.speech_performance_score) }}{% if evaluation.speech_performance_score is number %}%{% endif %}</b>
-          · Nonverbal <b>{% if evaluation.behavioral_score is number %}{{ num(evaluation.behavioral_score) }}%{% else %}no camera{% endif %}</b></p>
+        <p class="score-split">{{ bh_name }} <b>{% if evaluation.behavioral_score is number %}{{ num(evaluation.behavioral_score) }}%{% else %}no camera{% endif %}</b>
+          · {{ sp_name }} <b>{{ num(evaluation.speech_performance_score) }}{% if evaluation.speech_performance_score is number %}%{% endif %}</b></p>
       {% endif %}
     </section>
   {% endfor %}
@@ -98,8 +100,44 @@
   </section>
 
   <section class="tile tile-math">
+    {% set stt = answers | map(attribute="transcribed_by") | select | unique | list %}
+    {% if evaluation.scored_by or stt %}
+      <p class="ai-used small muted">
+        {% if evaluation.scored_by %}Scored by: <b>{{ AI_NAMES.get(evaluation.scored_by, evaluation.scored_by) }}</b>{% endif %}
+        {% if stt %}{{ ' · ' if evaluation.scored_by }}Speech-to-text: <b>{% for t in stt %}{{ AI_NAMES.get(t, t) }}{{ ', ' if not loop.last }}{% endfor %}</b>{% endif %}
+      </p>
+    {% endif %}
+
+    {% if v3 %}
+    <div class="delivery-check">
+      <h3>Communication Delivery checklist</h3>
+      <p class="small muted">Each behavior is checked once for the whole interview: met (✓) or not yet (✗).
+        Every criterion counts the same: {{ bh_name }} and {{ sp_name }} are each <b>criteria met ÷ 7 × 100</b>.</p>
+      <div class="check-cols">
+        {% for sec, name in [(evaluation.behavioral_section, "Behavioral (camera)"), (evaluation.speech_section, "Speech (voice)")] %}
+          <div class="check-col">
+            <h4>{{ name }}{% if sec and sec.score is number %} <span class="check-score">{{ sec.met }}/{{ sec.measured }} · {{ num(sec.score) }}%</span>{% endif %}</h4>
+            {% if sec %}
+            <ul class="check-list">
+              {% for i in sec["items"] %}
+                <li class="check-{{ 'yes' if i.met == 1 else ('near' if i.close == 'near' else 'no') if i.met == 0 else 'na' }}">
+                  <span class="check-mark" aria-hidden="true">{{ '✓' if i.met == 1 else '✗' if i.met == 0 else '–' }}</span>
+                  <span class="check-text"><b>{{ i.label }}</b>
+                    <small>{% if i.close == "near" %}Almost · {% endif %}{% if i.value is not none %}You: {{ i.value | round(1) }}{{ '' if i.unit.startswith('%') else ' ' }}{{ i.unit }} · {% endif %}Target: {{ i.target }}{% if i.met is none %} · not measured{% endif %}</small></span>
+                </li>
+              {% endfor %}
+            </ul>
+            {% else %}<p class="small muted">No data.</p>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <details class="help rubric-help">
+      <summary>How each score is calculated (scoring rubric)</summary>
     {% if evaluation.overall_score is number %}
-      <div class="overall-math">
+      <div class="overall-math rubric-math">
         <span class="overall-math-label">How your Interview readiness of {{ num(evaluation.overall_score) }}% was calculated</span>
         <div class="overall-math-row">
           <span class="math-term"><span><b>{{ num(evaluation.response_quality_score) }}%</b> × {{ ow.answer }}%</span><small>Answer Effectiveness</small></span>
@@ -110,7 +148,29 @@
           <span class="math-op">=</span>
           <span class="math-term math-result"><b>{{ num(evaluation.overall_score) }}%</b><small>Readiness</small></span>
         </div>
-        {% if evaluation.delivery_score is number %}
+        {% if evaluation.delivery_score is number and v3 %}
+          <div class="overall-math-row math-sub">
+            <span class="math-label">Communication Delivery:</span>
+            <span class="math-op">(</span>
+            {% if evaluation.behavioral_score is number %}
+              <span class="math-term"><b>{{ num(evaluation.behavioral_score) }}%</b><small>Behavioral</small></span>
+              <span class="math-op">+</span>
+            {% endif %}
+            <span class="math-term"><b>{{ num(evaluation.speech_performance_score) }}%</b><small>Speech</small></span>
+            <span class="math-op">) ÷ {{ 2 if evaluation.behavioral_score is number else 1 }} =</span>
+            <span class="math-term"><b>{{ num(evaluation.delivery_score) }}%</b><small>Delivery</small></span>
+          </div>
+          {% for sec, name in [(evaluation.behavioral_section, "Behavioral"), (evaluation.speech_section, "Speech")] %}
+            {% if sec and sec.score is number %}
+              <div class="overall-math-row math-sub">
+                <span class="math-label">{{ name }}:</span>
+                <span class="math-term"><b>{{ sec.met }} of {{ sec.measured }}</b><small>criteria met</small></span>
+                <span class="math-op">÷ {{ sec.measured }} × 100 =</span>
+                <span class="math-term"><b>{{ num(sec.score) }}%</b><small>{{ name }}</small></span>
+              </div>
+            {% endif %}
+          {% endfor %}
+        {% elif evaluation.delivery_score is number %}
           <div class="overall-math-row math-sub">
             <span class="math-label">Communication Delivery:</span>
             <span class="math-term"><span><b>{{ num(evaluation.speech_performance_score) }}%</b> × {{ dw.verbal }}%</span><small>Verbal</small></span>
@@ -128,16 +188,6 @@
       </div>
     {% endif %}
 
-    {% set stt = answers | map(attribute="transcribed_by") | select | unique | list %}
-    {% if evaluation.scored_by or stt %}
-      <p class="ai-used small muted">
-        {% if evaluation.scored_by %}Scored by: <b>{{ AI_NAMES.get(evaluation.scored_by, evaluation.scored_by) }}</b>{% endif %}
-        {% if stt %}{{ ' · ' if evaluation.scored_by }}Speech-to-text: <b>{% for t in stt %}{{ AI_NAMES.get(t, t) }}{{ ', ' if not loop.last }}{% endfor %}</b>{% endif %}
-      </p>
-    {% endif %}
-
-    <details class="help rubric-help">
-      <summary>How each score is calculated (scoring rubric)</summary>
       <p class="small">Every answer counts equally. Each criterion is scored 0–100 using five levels
         (100, 75, 50, 25, 0). The AI and the human evaluators use the same level descriptions.</p>
       <h4>Answer Effectiveness ({{ ow.answer }}% of readiness): what you said</h4>
@@ -150,6 +200,26 @@
         </tbody>
       </table>
       <h4>Communication Delivery ({{ ow.delivery }}% of readiness): how you said it</h4>
+      {% if v3 %}
+      <p class="small">Delivery = (Behavioral Score + Speech Score) ÷ 2. Each section has 7 yes/no criteria, all worth
+        the same (100 ÷ 7 = 14.29 points): Section Score = criteria met ÷ 7 × 100. A criterion with no measurement
+        (for example no camera) is left out, and the section is out of the criteria that were measured.</p>
+      {% for title, crit in [("Behavioral Score (camera): body language", rubric.behavioral_criteria),
+                             ("Speech Score (voice): how you spoke", rubric.speech_criteria)] %}
+        <h5 class="rubric-sub">{{ title }}</h5>
+        <table class="rubric-table">
+          <thead><tr><th>#</th><th>Criterion</th><th>Met when</th><th>How it is measured</th></tr></thead>
+          <tbody>
+          {% for c in crit %}
+            <tr><td>{{ c.key }}</td><td>{{ c.label }}</td><td>{{ c.target }}</td><td>{{ c.how }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      {% endfor %}
+      <p class="small muted">Professional appearance is not scored on purpose (Martín-Raugh et al., 2023 found signs of
+        gender bias); AIMIS scores only behaviors you can practice. The cutoffs are starting values that the team
+        calibrates with HR practitioners. Score levels: {{ rubric.band_ranges | join(", ") }}.</p>
+      {% else %}
       <table class="rubric-table">
         <thead><tr><th>Part</th><th>Criterion</th><th>Weight</th><th>How it is measured</th></tr></thead>
         <tbody>
@@ -163,6 +233,7 @@
       </table>
       <p class="small muted">Weights inside Verbal and Nonverbal are shares of that part. Score levels:
         {{ rubric.band_ranges | join(", ") }}. {{ rubric.pass_mark }} or more meets the standard.</p>
+      {% endif %}
     </details>
   </section>
 {% elif evaluation %}
@@ -282,9 +353,60 @@
 </section>
 {% endif %}
 
+{% if v3 %}
+  {# Rubric v3: only what was measured. Pass/fail is the checklist above (no extra 0-100 scores here). #}
+  {% set heard = answers | selectattr("speaking_rate", "number") | list %}
+  {% set seen  = answers | selectattr("eye_contact_score", "number") | list %}
+  {# Same colors as Answer Effectiveness: green = met the target, orange = almost (not met, but close), red = not met #}
+  {% set chk = {} %}
+  {% for sec in [evaluation.behavioral_section, evaluation.speech_section] if sec %}
+    {% for i in sec["items"] %}{% set _ = chk.update({i.key: i}) %}{% endfor %}
+  {% endfor %}
+  {% macro mark(key) -%}
+    {%- set c = chk.get(key) -%}
+    {%- if c and c.close == "met" %} <small>Met</small>{% elif c and c.close == "near" %} <small>Almost</small>{% elif c and c.close == "far" %} <small>Not met</small>{% endif -%}
+  {%- endmacro %}
+  {% macro cls(key) -%}
+    {%- set c = chk.get(key) -%}{{ {"met": "score-val lvl-good", "near": "score-val lvl-ok", "far": "score-val lvl-low"}.get(c.close, "") if c }}
+  {%- endmacro %}
+  {% macro row(label, items, key, unit, fmt="%.0f", crit=None) -%}
+    {%- set have = items | selectattr(key, "number") | list -%}
+    {%- if have -%}<div class="kv"><span>{{ label }}</span><span class="{{ cls(crit) if crit }}">{{ avg(have, key, fmt) }}{{ unit }}{{ mark(crit) if crit }}</span></div>{%- endif -%}
+  {%- endmacro %}
+  {% if heard or seen %}
+  <section class="tile tile-quarter">
+    <h2>Speech measurements</h2>
+    {% if heard %}
+      {{ row("Speaking pace", heard, "speaking_rate", " words/min", crit="S2") }}
+      <div class="kv"><span>Filler words</span><span class="{{ cls('S5') }}">{{ total(heard, "filler_word_count") }}{{ mark('S5') }}</span></div>
+      {% set lp = heard | selectattr("long_pause_count", "number") | list %}
+      {% if lp %}<div class="kv"><span>Long pauses <small class="muted">(2 s or more)</small></span><span class="{{ cls('S6') }}">{{ total(lp, "long_pause_count") }}{{ mark('S6') }}</span></div>{% endif %}
+      {{ row("Tone (pitch variation)", heard, "pitch_variation", " semitones", "%.1f", crit="S1") }}
+      {{ row("Volume", heard, "average_volume", " dBFS", "%.1f", crit="S3") }}
+      {{ row("Speaking time", heard, "speech_ratio", "%") }}
+      {{ row("Jitter (pitch wobble)", heard, "jitter", "%", "%.2f", crit="S7") }}
+      {{ row("Shimmer (loudness wobble)", heard, "shimmer", "%", "%.2f", crit="S7") }}
+    {% else %}<p class="muted">No speech data yet.</p>{% endif %}
+  </section>
+  <section class="tile tile-quarter">
+    <h2>Camera measurements</h2>
+    {% if seen %}
+      {{ row("Looking at the camera", seen, "eye_contact_score", "% of time", crit="B1") }}
+      {{ row("Smiling", seen, "smile_ratio", "% of time", crit="B3") }}
+      {{ row("Head nods", seen, "nods_per_min", " per min", "%.1f", crit="B2") }}
+      {{ row("Hand gestures", seen, "gestures_per_min", " per min", "%.1f", crit="B4") }}
+      {{ row("Hands visible", seen, "hands_visible_ratio", "% of time") }}
+      {{ row("Sitting upright", seen, "upright_ratio", "% of time", crit="B5") }}
+      {{ row("Facing the camera", seen, "facing_ratio", "% of time", crit="B6") }}
+      {{ row("Touches or jerky moves", seen, "fidgets_per_min", " per min", "%.1f", crit="B7") }}
+      {{ row("Face visible", seen, "face_visibility_score", "% of time") }}
+    {% else %}<p class="muted">No camera data for this interview.</p>{% endif %}
+  </section>
+  {% endif %}
+{% else %}
 {% if spoken or watched %}
   <section class="tile tile-quarter">
-    <h2>{{ 'Verbal delivery' if v2 else 'Speech Analysis' }}</h2>
+    <h2>{{ 'Speech' if v3 else 'Verbal delivery' if v2 else 'Speech Analysis' }}</h2>
     {% if spoken %}
       <div class="kv"><span>Speaking pace</span><span>{{ avg(spoken, "speaking_rate") }} WPM</span></div>
       <div class="kv"><span>Filler words</span><span>{{ total(spoken, "filler_word_count") }}</span></div>
@@ -307,7 +429,7 @@
   </section>
 
   <section class="tile tile-quarter">
-    <h2>{{ 'Nonverbal delivery' if v2 else 'Behavioral Analysis' }}</h2>
+    <h2>{{ 'Behavioral' if v3 else 'Nonverbal delivery' if v2 else 'Behavioral Analysis' }}</h2>
     {% if watched %}
       <div class="kv"><span>Eye contact</span>{{ score(watched, "eye_contact_score") }}</div>
       <div class="kv"><span>Face visibility</span>{{ score(watched, "face_visibility_score") }}</div>
@@ -324,6 +446,8 @@
       <p class="muted">No camera data for this interview.</p>
     {% endif %}
   </section>
+{% endif %}
+
 {% endif %}
 
 {# ---- This interview next to the student's earlier ones ---- #}

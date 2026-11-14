@@ -20,13 +20,19 @@ FILES = {
     "wasm/vision_wasm_nosimd_internal.wasm": f"{LIB}/wasm/vision_wasm_nosimd_internal.wasm",
     "models/face_landmarker.task": f"{MODELS}/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
     "models/hand_landmarker.task": f"{MODELS}/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+    # body model for posture and body orientation (B5, B6); without it AIMIS estimates them from the face
+    "models/pose_landmarker_lite.task": f"{MODELS}/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
 }
+FORCE = "--force" in __import__("sys").argv     # download again even if the file is already there
 
 base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "mediapipe")
 failed = []
 for name, url in FILES.items():
     path = os.path.join(base, *name.split("/"))
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    if os.path.exists(path) and not FORCE:
+        print(f"{name}: already saved")
+        continue
     try:
         print(f"Downloading {name} ...", end=" ", flush=True)
         urllib.request.urlretrieve(url, path)

@@ -260,6 +260,29 @@ def _run_script(conn, path):
         conn.executescript(f.read())
 
 
+# Columns added after the first release: added automatically to an older aimis.db when the app starts
+NEW_COLUMNS = {
+    "responses": {"audio_gain": "DECIMAL(6,3) DEFAULT NULL"},
+    "speech_analysis": {"long_pause_count": "INTEGER DEFAULT NULL", "jitter": "DECIMAL(6,3) DEFAULT NULL",
+                        "shimmer": "DECIMAL(6,3) DEFAULT NULL", "voice_steadiness": "DECIMAL(5,2) DEFAULT NULL"},
+    "behavior_analysis": {"nods_per_min": "DECIMAL(6,2) DEFAULT NULL", "gestures_per_min": "DECIMAL(6,2) DEFAULT NULL",
+                          "upright_ratio": "DECIMAL(5,2) DEFAULT NULL", "facing_ratio": "DECIMAL(5,2) DEFAULT NULL",
+                          "fidgets_per_min": "DECIMAL(6,2) DEFAULT NULL", "body_model": "VARCHAR(10) DEFAULT NULL"},
+}
+
+
+def _add_new_columns(conn):
+    for table, columns in NEW_COLUMNS.items():
+        have = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, kind in columns.items():
+            if name not in have:
+                try:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {kind}")
+                except sqlite3.OperationalError as e:      # another request added it at the same moment
+                    if "duplicate column" not in str(e):
+                        raise
+
+
 def init(path=None, quiet=True):
     """Create the tables if they're missing; add the questions and the admin account to an empty database."""
     path = path or db_path()
@@ -271,6 +294,7 @@ def init(path=None, quiet=True):
     try:
         conn.execute("PRAGMA journal_mode = WAL")       # lets the interview and the chatbot use it at the same time
         _run_script(conn, SCHEMA_FILE)
+        _add_new_columns(conn)
         empty = conn.execute("SELECT COUNT(*) FROM question_bank").fetchone()[0] == 0 \
             and conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
         if empty and os.path.exists(SEED_FILE):

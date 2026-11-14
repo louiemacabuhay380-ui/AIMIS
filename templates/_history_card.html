@@ -22,7 +22,7 @@
       <span class="h-big">{{ "%.0f" | format(i.overall_score) }}<small>/100</small></span>
       <span class="h-band"><b class="h-band-name">{{ score_band(i.overall_score) }}</b><small>Interview readiness</small></span>
     </div>
-    {% if i.answer_score is not none and i.delivery_score is not none and i.rubric_version == 'v2' %}
+    {% if i.answer_score is not none and i.delivery_score is not none and i.rubric_version in ('v2', 'v3') %}
       <div class="h-mini">
         {% for label, v in [("Answer", i.answer_score), ("Delivery", i.delivery_score)] %}
           <div class="h-mini-box h-mini-{{ score_level(v) }}"><span>{{ label }}</span><b>{{ "%.0f" | format(v) }}</b></div>

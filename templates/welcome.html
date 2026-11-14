@@ -13,13 +13,28 @@
   <form method="POST" class="card setup-card has-bot" id="onboard" novalidate>
     <div class="onboard-bot">
       {{ robot("happy") }}
-      <div class="speech speech-up" id="onboardSpeech">Hi{% if first %}, {{ first }}{% endif %}! I'm AIMIS Bot. Let me get to know you first.</div>
+      <div class="speech speech-up" id="onboardSpeech">Hi{% if first %}, {{ first }}{% endif %}! I'm AIMIS Bot, your practice interviewer.</div>
     </div>
 
     <div class="onboard-slides">
-    <section class="onboard-slide" data-say="Hi{% if first %}, {{ first }}{% endif %}! I'm AIMIS Bot. Let me get to know you first.">
-      <p class="room-kicker">Step 1 of 4 · About you</p>
+    <section class="onboard-slide onboard-intro" data-intro data-say="Hi{% if first %}, {{ first }}{% endif %}! I'm AIMIS Bot, your practice interviewer.">
       <h1 class="setup-welcome">Welcome to AIMIS{% if first %}, {{ first }}{% endif %}!</h1>
+      <p class="onboard-lead">AIMIS (AI Mock Interview System) lets you practice job interviews before the real one.
+        You talk with AIMIS Bot like a real interviewer, then see what you did well and what to work on.</p>
+      <ul class="intro-points">
+        <li><span class="intro-icon">{{ ui_icon("chat", 22) }}</span>
+          <div><b>A real conversation</b><small>AIMIS Bot asks questions for the job you want and follows up on your answers.</small></div></li>
+        <li><span class="intro-icon">{{ ui_icon("camera", 22) }}</span>
+          <div><b>It listens and watches</b><small>It checks how you answer and how you come across: your voice, eye contact and expressions.</small></div></li>
+        <li><span class="intro-icon">{{ ui_icon("chart", 22) }}</span>
+          <div><b>Feedback you can use</b><small>Get scores, tips and better ways to say your answers, and track your progress.</small></div></li>
+      </ul>
+      <p class="intro-note">{{ ui_icon("info", 16) }} Setup takes about 2 minutes: 3 quick questions, then your privacy consent.</p>
+    </section>
+
+    <section class="onboard-slide" data-say="Let me get to know you first, so I can fit the interview to you.">
+      <p class="room-kicker">Step 1 of 4 · About you</p>
+      <h1>Tell us about yourself</h1>
       <p class="onboard-lead">A few questions first, so AIMIS Bot can fit the interview to you.</p>
       {{ about_you(p, opts) }}
     </section>
@@ -40,14 +55,14 @@
 
     <div class="setup-nav">
       <button type="button" class="btn btn-outline" id="onboardBack" hidden>Back</button>
-      <button type="button" class="btn" id="onboardNext" hidden>Next {{ ui_icon("arrow", 16) }}</button>
+      <button type="button" class="btn" id="onboardNext" hidden><span class="next-label">Next</span> {{ ui_icon("arrow", 16) }}</button>
       <button type="submit" class="btn" id="onboardDone">Continue {{ ui_icon("arrow", 16) }}</button>
     </div>
     </div>
   </form>
 
   <ol class="setup-dots" id="setupDots" aria-label="Setup steps">
-    <li class="on" aria-current="step"><span class="sr-only">Step 1: About you</span></li>
+    <li><span class="sr-only">Step 1: About you</span></li>
     <li><span class="sr-only">Step 2: Your goal</span></li>
     <li><span class="sr-only">Step 3: Your experience</span></li>
     <li><span class="sr-only">Step 4: Privacy consent</span></li>
@@ -60,16 +75,20 @@
     var form = document.getElementById("onboard"), slides = form.querySelectorAll(".onboard-slide"),
         dots = document.querySelectorAll("#setupDots li"),
         back = document.getElementById("onboardBack"), next = document.getElementById("onboardNext"),
-        done = document.getElementById("onboardDone"), at = 0;
+        done = document.getElementById("onboardDone"), at = 0,
+        intro = slides[0].hasAttribute("data-intro") ? 1 : 0;
     form.noValidate = false;
     function show(i) {
       at = i;
       slides.forEach(function (s, k) { s.hidden = k !== i; });
+      // the welcome page (first slide) isn't a numbered step, so dot 1 starts at slide 2
+      var step = i - intro;
       dots.forEach(function (d, k) {
-        d.classList.toggle("on", k === i);
-        d.classList.toggle("done", k < i);
-        if (k === i) d.setAttribute("aria-current", "step"); else d.removeAttribute("aria-current");
+        d.classList.toggle("on", k === step);
+        d.classList.toggle("done", k < step);
+        if (k === step) d.setAttribute("aria-current", "step"); else d.removeAttribute("aria-current");
       });
+      next.querySelector(".next-label").textContent = (intro && i === 0) ? "Get started" : "Next";
       var say = slides[i].getAttribute("data-say"), sp = document.getElementById("onboardSpeech");
       if (say && sp) sp.textContent = say;
       back.hidden = i === 0;

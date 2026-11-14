@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS responses (
   audio_path VARCHAR(500) DEFAULT NULL,
   video_path VARCHAR(500) DEFAULT NULL,
   duration DECIMAL(8,2) DEFAULT NULL,
-  created_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime'))
+  created_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime')),
+  audio_gain DECIMAL(6,3) DEFAULT NULL
 );
 CREATE INDEX IF NOT EXISTS fk_response_interview_question ON responses (interview_question_id);
 
@@ -92,7 +93,11 @@ CREATE TABLE IF NOT EXISTS speech_analysis (
   speech_ratio DECIMAL(5,2) DEFAULT NULL,
   confidence_score DECIMAL(5,2) DEFAULT NULL,
   clarity_score DECIMAL(5,2) DEFAULT NULL,
-  transcribed_by VARCHAR(20) DEFAULT NULL
+  transcribed_by VARCHAR(20) DEFAULT NULL,
+  long_pause_count INTEGER DEFAULT NULL,
+  jitter DECIMAL(6,3) DEFAULT NULL,
+  shimmer DECIMAL(6,3) DEFAULT NULL,
+  voice_steadiness DECIMAL(5,2) DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS nlp_analysis (
@@ -123,7 +128,13 @@ CREATE TABLE IF NOT EXISTS behavior_analysis (
   frames_analyzed INTEGER DEFAULT NULL,
   hands_visible_ratio DECIMAL(5,2) DEFAULT NULL,
   expressive_gesture_ratio DECIMAL(5,2) DEFAULT NULL,
-  face_touch_ratio DECIMAL(5,2) DEFAULT NULL
+  face_touch_ratio DECIMAL(5,2) DEFAULT NULL,
+  nods_per_min DECIMAL(6,2) DEFAULT NULL,
+  gestures_per_min DECIMAL(6,2) DEFAULT NULL,
+  upright_ratio DECIMAL(5,2) DEFAULT NULL,
+  facing_ratio DECIMAL(5,2) DEFAULT NULL,
+  fidgets_per_min DECIMAL(6,2) DEFAULT NULL,
+  body_model VARCHAR(10) DEFAULT NULL
 );
 
 CREATE TABLE IF NOT EXISTS evaluations (

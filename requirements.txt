@@ -9,5 +9,9 @@ nltk
 # Optional: offline speech-to-text backup when Gemini fails
 # faster-whisper
 
+# Optional (recommended for the defense): Praat's standard jitter/shimmer for Voice quality (S7).
+# Without it AIMIS uses its own cycle-by-cycle estimate.
+# praat-parselmouth
+
 # Only for the one-time copy of old XAMPP data (python migrate_from_mysql.py)
 # mysql-connector-python

@@ -170,8 +170,11 @@ def evaluate_interview(interview_id):
                              iq.parent_iq_id, piq.question_order AS parent_order,
                              COALESCE(sa.filler_word_count, 0) AS filler_word_count,
                              sa.fluency_score, sa.confidence_score, sa.clarity_score AS speech_clarity,
+                             r.duration, sa.speech_duration, sa.speaking_rate, sa.pitch_variation, sa.average_volume,
+                             sa.long_pause_count, sa.voice_steadiness,
                              ba.eye_contact_score, ba.facial_expression_score,
-                             ba.gesture_score, ba.face_visibility_score
+                             ba.gesture_score, ba.face_visibility_score, ba.smile_ratio, ba.nods_per_min,
+                             ba.gestures_per_min, ba.upright_ratio, ba.facing_ratio, ba.fidgets_per_min
                       FROM interview_questions iq
                       JOIN question_bank qb ON qb.question_id = iq.question_id
                       JOIN responses r ON r.interview_question_id = iq.interview_question_id
@@ -276,8 +279,11 @@ def save_transcription(cursor, response_id, duration, result, features):
     """Save one answer's transcript and speech measurements."""
     transcript = (result.get("transcript") or "").strip()
     duration = float(duration or 0)
-    speaking_rate = round(len(transcript.split()) / (duration / 60), 2) if duration else 0
     f = features or {}
+    # Speech rate (S2): words per minute from the first word to the last, so the silence before starting
+    # (and after finishing) doesn't make the pace look slower than it was
+    span = float(f.get("talk_span") or 0) or duration
+    speaking_rate = round(len(transcript.split()) / (span / 60), 2) if span else 0
     cursor.execute("UPDATE responses SET transcript = %s WHERE response_id = %s", (transcript, response_id))
     cursor.execute("DELETE FROM speech_analysis WHERE response_id = %s", (response_id,))
     cursor.execute("""INSERT INTO speech_analysis
@@ -295,6 +301,10 @@ def save_transcription(cursor, response_id, duration, result, features):
                     min(max(float(result.get("clarity_score") or 0), 0), 100)))
     save_ai_name(cursor, "UPDATE speech_analysis SET transcribed_by = %s WHERE response_id = %s",
                  (result.get("_provider", "gemini"), response_id))
+    # Speech formula (S6, S7): long pauses and voice quality
+    cursor.execute("""UPDATE speech_analysis SET long_pause_count = %s, jitter = %s, shimmer = %s, voice_steadiness = %s
+                      WHERE response_id = %s""",
+                   (f.get("long_pause_count"), f.get("jitter"), f.get("shimmer"), f.get("voice_steadiness"), response_id))
 
 
 def transcribe_pending(interview_id):
@@ -302,7 +312,7 @@ def transcribe_pending(interview_id):
     (answers the live interviewer couldn't process in time, or every answer when ADAPTIVE_INTERVIEW=0)."""
     conn = get_db()
     cursor = conn.cursor(dictionary=True)
-    cursor.execute("""SELECT r.response_id, r.audio_path, r.duration, qb.question_text
+    cursor.execute("""SELECT r.response_id, r.audio_path, r.duration, r.audio_gain, qb.question_text
                       FROM responses r
                       JOIN interview_questions iq ON iq.interview_question_id = r.interview_question_id
                       JOIN question_bank qb ON qb.question_id = iq.question_id
@@ -314,7 +324,7 @@ def transcribe_pending(interview_id):
         with open(os.path.join(app.root_path, row["audio_path"]), "rb") as file:
             audio_bytes = fernet.decrypt(file.read())
         result = transcribe_answer(row["question_text"], audio_bytes)
-        features = analyze_audio(audio_bytes, int(result.get("filler_word_count", 0)))
+        features = analyze_audio(audio_bytes, int(result.get("filler_word_count", 0)), row.get("audio_gain") or 1)
         return row, result, features
 
     failed, first_error = 0, None
@@ -336,13 +346,15 @@ def transcribe_pending(interview_id):
         raise RuntimeError(f"{failed} answer(s) could not be transcribed.") from first_error
 
 
-def live_answer(response_id, audio_bytes, duration, question_text, iv, allow_follow_up, need_next, history, avoid):
+def live_answer(response_id, audio_bytes, duration, question_text, iv, allow_follow_up, need_next, history, avoid,
+                gain=1.0):
     """Runs right after an answer is saved: transcribe it, measure the speech, save both, and return what the
     interviewer says next ({"reply", "follow_up", "next_question"}). Uses its own database connection (thread)."""
     result = live_turn(question_text, audio_bytes, iv.get("ai_context") or iv.get("career_goal"), iv["category"], iv["difficulty"],
-                       allow_follow_up, need_next=need_next, history=history, avoid=avoid)
+                       allow_follow_up, need_next=need_next, history=history, avoid=avoid,
+                       name=iv.get("first_name", ""))
     try:
-        features = analyze_audio(audio_bytes, int(result.get("filler_word_count") or 0))
+        features = analyze_audio(audio_bytes, int(result.get("filler_word_count") or 0), gain)
     except Exception as e:
         print("Speech measurement failed for this answer:", e)
         features = None
@@ -1130,10 +1142,15 @@ def interview(interview_id):
             f.write(fernet.encrypt(audio_bytes))
 
         # Save the answer now. The live interviewer (below) transcribes it right away.
+        try:
+            gain = min(max(float(request.form.get("gain") or 1), 1), 8)   # how much the browser boosted a quiet mic
+        except ValueError:
+            gain = 1.0
         cursor.execute("""INSERT INTO responses (interview_question_id, audio_path, duration)
                           VALUES (%s, %s, %s)""",
                        (submitted_id, f"uploads/audio/{filename}", duration))
         response_id = cursor.lastrowid
+        cursor.execute("UPDATE responses SET audio_gain = %s WHERE response_id = %s", (gain, response_id))
 
         # Behavior scores calculated in the browser (eye contact, expression, gestures)
         behavior = request.form.get("behavior")
@@ -1157,13 +1174,28 @@ def interview(interview_id):
                 except db.ProgrammingError as e:
                     if e.errno != 1054:      # 1054 = unknown column
                         raise
-                    print("Note: run block 5 of database/schema_updates.sql to save the detailed gesture data.")
+                    print("Note: run python check_setup.py --fix to save the detailed behavior data.")
                     cursor.execute("""INSERT INTO behavior_analysis
                                       (response_id, eye_contact_score, face_visibility_score,
                                        facial_expression_score, gesture_score, smile_ratio,
                                        gesture_ratio, frames_analyzed)
                                       VALUES (%s, %s, %s, %s, %s, %s, %s, %s)""",
                                    (response_id, *values, int(b.get("frames_analyzed", 0))))
+                try:
+                    # Behavioral formula (B2, B4-B7): nods, gestures and fidgets per minute, posture and facing shares
+                    def rate(k, top):
+                        v = b.get(k)
+                        return None if v is None else min(max(float(v), 0), top)
+                    cursor.execute("""UPDATE behavior_analysis SET nods_per_min = %s, gestures_per_min = %s,
+                                      upright_ratio = %s, facing_ratio = %s, fidgets_per_min = %s, body_model = %s
+                                      WHERE response_id = %s""",
+                                   (rate("nods_per_min", 120), rate("gestures_per_min", 300), rate("upright_ratio", 100),
+                                    rate("facing_ratio", 100), rate("fidgets_per_min", 300),
+                                    str(b.get("body_model") or "")[:10] or None, response_id))
+                except db.ProgrammingError as e:
+                    if e.errno != 1054:
+                        raise
+                    print("Note: run python check_setup.py --fix to save the new behavior measures.")
             except (ValueError, TypeError, AttributeError):
                 pass   # invalid data from the browser: skip behavior for this answer
         conn.commit()
@@ -1182,10 +1214,11 @@ def interview(interview_id):
                                           current["question_order"])
             avoid = [current["question_text"]] + avoid
             iv["ai_context"] = interview_context(cursor, iv["user_id"], iv.get("career_goal"))
+            iv["first_name"] = first_name()
             added = False
             try:
                 turn = live_pool.submit(live_answer, response_id, audio_bytes, duration, current["question_text"],
-                                        iv, allow, need_next, history, avoid).result(timeout=LIVE_TIMEOUT)
+                                        iv, allow, need_next, history, avoid, gain).result(timeout=LIVE_TIMEOUT)
                 reply = turn["reply"]
                 substance = "has substance" if turn.get("substance") else "has no substance to dig into"
                 if allow and turn["follow_up"]:
@@ -1389,6 +1422,29 @@ def attach_transcriber(cursor, answers):
 app.jinja_env.globals["AI_NAMES"] = AI_NAMES
 
 
+def refresh_delivery(cursor, interview_id, evaluation):
+    """Re-check a v3 interview with the current cutoffs (thresholds.py) and save the new numbers if they changed,
+    so the report, the history, the dashboard and the admin pages all show the same scores."""
+    b, sp = evaluation.get("behavioral_section"), evaluation.get("speech_section")
+    if not b or not sp:
+        return
+    delivery = scoring.delivery_from(sp["score"], b["score"])
+    overall = scoring.overall_from(num(evaluation.get("response_quality_score")), delivery)
+    profile = scoring.profile(num(evaluation.get("response_quality_score")), delivery)
+    new = {"behavioral_score": b["score"], "speech_performance_score": sp["score"], "delivery_score": delivery,
+           "overall_score": overall, "performance_profile": profile}
+    def same(old, value):
+        return old == value if isinstance(value, str) or value is None else (num(old) is not None and abs(num(old) - value) < 0.01)
+    if all(same(evaluation.get(k), v) for k, v in new.items()):
+        return
+    evaluation.update(new)
+    cursor.execute("""UPDATE evaluations SET behavioral_score = %s, speech_performance_score = %s, delivery_score = %s,
+                      overall_score = %s, performance_profile = %s WHERE interview_id = %s""",
+                   (b["score"], sp["score"], delivery, overall, profile, interview_id))
+    cursor.execute("UPDATE interviews SET overall_score = %s WHERE interview_id = %s", (overall, interview_id))
+    cursor._c.connection.commit()     # save right away (the report page only reads otherwise)
+
+
 def load_report(cursor, interview_id):
     """Answers, scores and feedback for one interview (used by the student report and the admin view)."""
     cursor.execute("""SELECT iq.question_order, qb.question_text, qb.source AS question_source, r.response_id,
@@ -1400,8 +1456,11 @@ def load_report(cursor, interview_id):
                              s.total_pause_time, s.longest_pause, s.pitch_variation,
                              s.volume_variation, s.speech_ratio, s.confidence_score,
                              s.clarity_score AS speech_clarity,
+                             r.duration, s.speech_duration, s.average_volume, s.long_pause_count, s.jitter, s.shimmer,
+                             s.voice_steadiness,
                              b.eye_contact_score, b.face_visibility_score, b.facial_expression_score,
-                             b.gesture_score, b.smile_ratio, b.gesture_ratio
+                             b.gesture_score, b.smile_ratio, b.gesture_ratio, b.nods_per_min, b.gestures_per_min,
+                             b.upright_ratio, b.facing_ratio, b.fidgets_per_min, b.body_model
                       FROM interview_questions iq
                       JOIN question_bank qb ON qb.question_id = iq.question_id
                       LEFT JOIN interview_questions piq ON piq.interview_question_id = iq.parent_iq_id
@@ -1416,11 +1475,18 @@ def load_report(cursor, interview_id):
         for k, v in a.items():
             if k.endswith("_score") or k in ("speech_clarity",):
                 a[k] = num(v)
-    scoring.attach_answer_scores(answers)
-    answers = personal_feedback.attach_answer_feedback(cursor, answers)
-    attach_transcriber(cursor, answers)
     cursor.execute("SELECT * FROM evaluations WHERE interview_id = %s", (interview_id,))
     evaluation = cursor.fetchone()
+    version = (evaluation or {}).get("rubric_version") or scoring.RUBRIC_VERSION
+    scoring.attach_answer_scores(answers, version)
+    if evaluation is not None and version == "v3":
+        # The 14 behavioral and speech criteria for the whole interview (met / not met), for the report
+        answered = [a for a in answers if a.get("response_id")]
+        evaluation["behavioral_section"], evaluation["speech_section"] = \
+            scoring.delivery_sections(scoring.combine_measures(answered)) if answered else (None, None)
+        refresh_delivery(cursor, interview_id, evaluation)
+    answers = personal_feedback.attach_answer_feedback(cursor, answers)
+    attach_transcriber(cursor, answers)
     cursor.execute("SELECT * FROM feedback WHERE interview_id = %s ORDER BY created_at DESC LIMIT 1",
                    (interview_id,))
     fb = cursor.fetchone()

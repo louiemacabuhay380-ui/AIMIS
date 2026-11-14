@@ -78,6 +78,11 @@
 </div>
 
 <script>
+// Microphone: the browser's built-in clean-up (removes steady background noise and echo, evens out quiet mics).
+// voiceIsolation goes further on browsers that support it (focuses on the nearest voice); others ignore it.
+const MIC_SETTINGS = { channelCount: 1, echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+                       voiceIsolation: true };
+
 // The camera is used for behavioral analysis (eye contact, expressions, gestures)
 const REQUIRE_CAMERA = true;
 
@@ -129,7 +134,7 @@ micBtn.onclick = async () => {
   micBtn.disabled = true;
   let stream;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream = await navigator.mediaDevices.getUserMedia({ audio: MIC_SETTINGS });
   } catch (err) {
     micStatus.textContent = explain(err, "microphone");
     setDevice("mic", "error", "Problem");

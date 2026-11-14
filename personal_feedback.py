@@ -155,8 +155,8 @@ def past_scores(cursor, user_id, before_interview_id):
 
 
 PARTS = [("Overall", "overall_score"), ("Answer effectiveness", "response_quality_score"),
-         ("Communication delivery", "delivery_score"), ("Verbal delivery", "speech_performance_score"),
-         ("Nonverbal delivery", "behavioral_score")]
+         ("Communication delivery", "delivery_score"), ("Speech score", "speech_performance_score"),
+         ("Behavioral score", "behavioral_score")]
 
 
 def _average(rows, key):
@@ -277,12 +277,69 @@ def _fallback_items(result, qa_list, have_strength, have_improve):
     return items
 
 
-def _delivery_items(qa_list):
-    """Filler words and body language, with the exact answer and numbers (never general)."""
+# Tips for the behavioral and speech checklist (rubric v3). Eye contact, smiling, fillers and face touching
+# already have their own tips above, so they aren't repeated here.
+CHECKLIST_TIPS = {
+    "B2": ("You hardly nodded", "Nod now and then while you talk about something you agree with or care about; it shows engagement."),
+    "B4": ("Your hand gestures were {dir}", "Use your hands for a few key points (listing, showing size), then rest them. Not every sentence."),
+    "B5": ("You slouched or leaned back for much of the time", "Sit up straight with your back against the chair, or lean slightly forward."),
+    "B6": ("Your body was turned away from the camera", "Turn your chair and shoulders to face the camera directly."),
+    "S1": ("Your voice was {dir}", "Let your voice go up and down naturally: stress the key words, and drop your pitch at the end of a point."),
+    "S2": ("You spoke {dir}", "Aim for a calm, steady pace: about two to three words per second, with a short breath between ideas."),
+    "S3": ("Your voice was {dir}", "Sit about an arm's length from the microphone and speak as if to someone across a table."),
+    "S6": ("You had long silences in the middle of your answers", "Before answering, take a second to plan your first sentence; then keep going with your example."),
+    "S7": ("Your voice sounded shaky or strained", "Breathe out slowly before you start, sit upright, and speak from your chest at a comfortable pitch."),
+}
+DIRECTION = {"B4": ("few", "nonstop"), "S1": ("flat (monotone)", "very up and down"),
+             "S2": ("slowly", "fast"), "S3": ("quiet", "very loud")}
+
+
+def _checklist_items(qa_list, limit=3):
+    """One tip for each unmet checklist criterion (most useful first), pointing to the answer where it was furthest off."""
+    rows = [r for r in qa_list if r.get("transcript") is not None]
+    if not rows:
+        return []
+    values = scoring.combine_measures(rows)
+    behavioral, speech = scoring.delivery_sections(values)
     items = []
+    for c in behavioral["items"] + speech["items"]:
+        if c["met"] != 0 or c["key"] not in CHECKLIST_TIPS or len(items) >= limit:
+            continue
+        point, fix = CHECKLIST_TIPS[c["key"]]
+        t = scoring.threshold(c)
+        too_high = c["rule"] == "range" and c["value"] > t[1]
+        if "{dir}" in point:
+            point = point.format(dir=DIRECTION[c["key"]][1 if too_high else 0])
+        # the answer where this was furthest from the target
+        per = [(n, scoring.measures(r).get(c["measure"])) for n, r in enumerate(qa_list, start=1)]
+        per = [(n, v) for n, v in per if v is not None]
+        if not per:
+            continue
+        n, v = (max if too_high or c["rule"] == "max" else min)(per, key=lambda x: x[1])
+        items.append({"kind": "delivery", "answer_no": n,
+                      "point": f"{point}, especially in answer {n} ({c['label'].lower()}: {scoring.with_unit(round(v, 1), c['unit'])}; "
+                               f"target {c['target']}).",
+                      "quote": "", "fix": fix, "example": ""})
+    return items
+
+
+def _unmet(qa_list):
+    """Keys of the checklist criteria (B1-B7, S1-S7) not met in this interview, so the tips match the checklist."""
+    rows = [r for r in qa_list if r.get("transcript") is not None] or qa_list
+    if not rows:
+        return set()
+    behavioral, speech = scoring.delivery_sections(scoring.combine_measures(rows))
+    return {i["key"] for i in behavioral["items"] + speech["items"] if i["met"] == 0}
+
+
+def _delivery_items(qa_list):
+    """Filler words and body language, with the exact answer and numbers (never general).
+    A tip only appears when its checklist criterion wasn't met (fillers S5, eye contact B1, smiling B3, touching B7)."""
+    items = []
+    unmet = _unmet(qa_list)
     fillers = [(int(qa.get("filler_word_count") or 0), n, qa) for n, qa in enumerate(qa_list, start=1)]
     total = sum(f[0] for f in fillers)
-    if total >= 3:
+    if total >= 3 and "S5" in unmet:
         count, n, qa = max(fillers, key=lambda f: f[0])
         found = {}
         for m in FILLER_WORDS.finditer(qa.get("transcript") or ""):
@@ -307,7 +364,7 @@ def _delivery_items(qa_list):
     if cam:
         n, qa = min(cam, key=lambda c: float(c[1]["eye_contact_score"]))
         eye = round(float(qa["eye_contact_score"]))
-        if eye < DELIVERY_LOW:
+        if "B1" in unmet:
             items.append({"kind": "delivery", "answer_no": n,
                           "point": f"Your eye contact dropped to {eye}% in answer {n} "
                                    f"(\"{_short_question(qa.get('question_text'))}\"), so you looked away for much of it.",
@@ -315,11 +372,12 @@ def _delivery_items(qa_list):
                           "fix": "Look at the camera lens (not your own video) while you talk. It's fine to glance away "
                                  "for a second to think, then come back to the lens.",
                           "example": ""})
-        n, qa = min(cam, key=lambda c: float(c[1].get("facial_expression_score") or 0))
-        face = round(float(qa.get("facial_expression_score") or 0))
-        if face < DELIVERY_LOW:
+        n, qa = min(cam, key=lambda c: float(c[1].get("smile_ratio") or 0))
+        smile = round(float(qa.get("smile_ratio") or 0))
+        if "B3" in unmet:
             items.append({"kind": "delivery", "answer_no": n,
-                          "point": f"Your face looked tense or serious in answer {n} (facial expression {face}%).",
+                          "point": f"You rarely smiled, especially in answer {n} (smiling {smile}% of the time; "
+                                   f"target at least {scoring.T.T3_SMILE_PCT:g}%).",
                           "quote": "",
                           "fix": f"Smile briefly when you start answer {n} and when you talk about a good result.",
                           "example": ""})
@@ -327,7 +385,7 @@ def _delivery_items(qa_list):
         if touch:
             n, qa = max(touch, key=lambda c: float(c[1]["face_touch_ratio"]))
             t = round(float(qa["face_touch_ratio"]))
-            if t >= 15:
+            if "B7" in unmet and t > 0:
                 items.append({"kind": "delivery", "answer_no": n,
                               "point": f"You touched your face or hair {t}% of the time during answer {n}, which can look nervous.",
                               "quote": "",
@@ -351,6 +409,7 @@ def build_feedback_items(result, qa_list):
                              have_strength=any(i["kind"] == "strength" for i in items),
                              have_improve=any(i["kind"] == "improve" for i in items))
     items += _delivery_items(qa_list)
+    items += _checklist_items(qa_list)
     # Cards for each answer in "Your Answers": what worked, and what to fix with an example
     for n, (qa, raw) in enumerate(zip(qa_list, result.get("answers") or []), start=1):
         fb = clean_answer_feedback(raw if isinstance(raw, dict) else {}, qa.get("transcript"))
