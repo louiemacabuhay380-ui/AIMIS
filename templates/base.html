@@ -70,12 +70,7 @@
       img.src = src;
     };
 
-    // Browser tab icon: in dark mode on the computer, use the light version so it shows on dark tab bars
-    if (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches) {
-      aimisLightLogo("{{ url_for('static', filename='img/aimis-mark.png') }}", function (url) {
-        document.getElementById("favicon").href = url;
-      });
-    }
+    // The logo has its own blue tile, so the same icon works on light and dark tab bars
   </script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -308,5 +303,14 @@
       }
     })();
   </script>
+<script>
+/* Label each table cell with its column name so wide tables can show as cards on small screens */
+document.querySelectorAll('.table-scroll > .data-table').forEach(function (t) {
+  var heads = Array.prototype.map.call(t.querySelectorAll('thead th'), function (th) { return th.textContent.trim(); });
+  t.querySelectorAll('tbody tr').forEach(function (tr) {
+    Array.prototype.forEach.call(tr.children, function (td, i) { if (heads[i]) td.setAttribute('data-label', heads[i]); });
+  });
+});
+</script>
 </body>
 </html>

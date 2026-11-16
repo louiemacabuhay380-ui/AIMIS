@@ -108,7 +108,6 @@
       {% set n = iv.number_of_questions %}
       <div class="chat-start ready-card" id="startHint">
         <div class="ready-skill">
-          <span class="ready-icon">{{ skill_icon(iv.category, 28) }}</span>
           <div>
             <p class="ready-kicker">{{ iv.difficulty }} · {{ iv.category }}{% if iv.career_goal %} · {{ iv.career_goal }}{% endif %}</p>
             <h2 class="ready-title">{% if current.question_order == 1 %}Your interview is ready{% else %}Welcome back: question {{ current.main_number }} of {{ n }}{% endif %}</h2>

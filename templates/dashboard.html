@@ -18,7 +18,6 @@
       <div class="dash-hero-actions">
         <a href="{{ url_for('start_interview') }}" class="btn btn-lg">{{ ui_icon("play", 18) }} Start mock interview</a>
         <div class="dash-job">
-          <span class="dash-job-icon">{{ ui_icon("briefcase", 18) }}</span>
           <span><small>Target job</small><b>{{ career or 'Not set yet' }}</b></span>
           <button type="button" class="btn btn-sm btn-outline" data-open-career>{{ ui_icon("edit", 14) }} Change</button>
         </div>
@@ -26,7 +25,7 @@
       <div class="dash-quick">
         <span class="dash-quick-label">Or practice a skill:</span>
         {% for name, desc in SKILLS %}
-          <a href="{{ url_for('start_interview', category=name) }}" class="quick-chip" title="{{ desc }}">{{ skill_icon(name, 16) }}{{ name }}</a>
+          <a href="{{ url_for('start_interview', category=name) }}" class="quick-chip" title="{{ desc }}">{{ name }}</a>
         {% endfor %}
       </div>
     </div>
@@ -259,7 +258,6 @@
         {% for i in recent %}
           {% set scored = i.overall_score is not none and i.evaluation_id %}
           <li><a href="{{ url_for('interview_summary', interview_id=i.interview_id) }}" class="recent-row">
-            <span class="session-icon">{{ skill_icon(i.category, 18) }}</span>
             <span class="recent-text"><b>{{ i.category }}</b><small>{{ i.started_at.strftime('%b %d, %Y') }} · {{ i.difficulty }}</small></span>
             {% if scored %}
               <span class="recent-score lvl-{{ score_level(i.overall_score) }}">{{ "%.0f" | format(i.overall_score) }}</span>

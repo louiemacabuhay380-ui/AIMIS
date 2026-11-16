@@ -3417,3 +3417,229 @@ body.is-admin .label-line span:last-child { white-space: nowrap; flex-shrink: 0;
 /* History cards: only the numbers are green / orange / red; the score box and band name stay neutral */
 .h-grid .h-lvl-good .h-card-score, .h-grid .h-lvl-ok .h-card-score, .h-grid .h-lvl-low .h-card-score { background: var(--surface-2); }
 .h-grid .h-lvl-good .h-band-name, .h-grid .h-lvl-ok .h-band-name, .h-grid .h-lvl-low .h-band-name { color: var(--text); }
+
+/* =====================================================================================================
+   Phones and tablets: less scrolling. Content that is only extra explanation gets smaller or tucks away,
+   long rows of chips scroll sideways, and the main action button stays in reach.
+   ===================================================================================================== */
+
+/* ---------- Tablets (iPad and similar, 641 to 1023 px wide) ---------- */
+@media (min-width: 641px) and (max-width: 1023px) {
+  .pick-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }          /* Start interview: skills in 2 rows */
+  .setup-bot .mascot, .setup-bot .robot, .setup-bot svg.robot { display: none; }
+  .setup-bot { padding: 18px 20px; }
+  /* Device check: tips across the top, microphone and camera side by side, start button below */
+  .bento-device { display: grid; height: auto; min-height: 0; grid-template-columns: 1fr 1fr; grid-template-rows: none; gap: 14px; }
+  .bento-device .tile-tips { grid-column: 1 / -1; grid-row: auto; order: 0; }
+  .bento-device .tile-tips .tips-bot { display: none; }
+  .bento-device .tile-mic { grid-column: 1; grid-row: auto; order: 1; }
+  .bento-device .tile-cam { grid-column: 2; grid-row: auto; order: 2; }
+  .bento-device .tile-go { grid-column: 1 / -1; grid-row: auto; order: 3; }
+  .bento-device .tile-cam .cam-box { flex: none; height: 240px; }
+  .bento-device:not(:has(.tile-cam:not([hidden]))) .tile-mic { grid-column: 1 / -1; }
+}
+
+/* ---------- Phones (up to 640 px wide) ---------- */
+@media (max-width: 640px) {
+  body.has-sidebar > .container, main.container { padding-left: 14px; padding-right: 14px; }
+  .page-head h1 { font-size: 28px; line-height: 1.15; }
+  .page-head p { font-size: 15px; }
+
+  /* Home: skill shortcuts in one row that scrolls sideways; smaller skill rings */
+  .dash-quick { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    margin-right: -20px; padding-right: 20px; padding-bottom: 2px; }
+  .dash-quick::-webkit-scrollbar { display: none; }
+  .dash-quick .quick-chip { flex-shrink: 0; }
+  .dash-quick-label { flex-shrink: 0; }
+  .dash-fit .dash-hero { padding: 20px 18px; }
+  .dash-fit .dash-hero h1 { font-size: 26px; }
+  .dash-fit .dash-hero-sub { font-size: 15px; margin-bottom: 14px; }
+  .dash-fit .dash-hero-actions .btn-lg { width: 100%; justify-content: center; }
+  .dash-fit .tile-skills .rings, .tile-skills .rings { max-width: 160px; margin: 0 auto; }
+  .dash-fit .tile-skills .ring-legend { font-size: 12.5px; }
+
+  /* Interview history: tabs in one row, more compact cards */
+  .filter-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin-bottom: 16px; }
+  .filter-tabs::-webkit-scrollbar { display: none; }
+  .filter-tabs a { flex-shrink: 0; padding: 8px 14px; }
+  .h-grid { gap: 14px; }
+  .h-grid .h-card { padding: 14px; gap: 12px; }
+  .h-grid .h-top { padding: 12px 14px; gap: 8px; }
+  .h-grid .h-card-title h3 { font-size: 21px; }
+  .h-grid .h-card-title p, .h-grid .h-meta-line, .h-grid .h-job-line { font-size: 14.5px; }
+  .h-grid .h-card-score { padding: 10px 14px; }
+  .h-grid .h-card .h-big { font-size: 44px; }
+  .h-grid .h-mini-box b { font-size: 26px; }
+  .h-grid .h-pending small { display: none; }
+  .h-grid .h-pending { padding: 10px 14px; }
+
+  /* Start interview: short steps, no long explanations, difficulty on one row */
+  .career-banner .muted.small { display: none; }
+  .how-steps { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .how-steps::-webkit-scrollbar { display: none; }
+  .how-steps li { flex: 1 0 auto; padding: 10px 12px; }
+  .how-steps li span:not(.step-num) { font-size: 0; }
+  .how-steps li b { font-size: 14px; display: inline; }
+  .pill-group { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .pill span { padding: 10px 8px; text-align: center; }
+  .pill small { display: none; }
+  .setup .field-hint { font-size: 13px; }
+  .setup-bot .mascot, .setup-bot .robot, .setup-bot svg.robot, .setup-bot .speech { display: none; }
+  .setup-bot { padding: 14px 16px; }
+  .setup-form .btn-row { position: sticky; bottom: 0; z-index: 5; margin: 0 -16px -16px; padding: 12px 16px;
+    background: var(--surface); border-top: 1px solid var(--border); border-radius: 0 0 18px 18px; }
+  .setup-form .btn-row .btn { flex: 1; justify-content: center; }
+
+  /* Device check: short tips, smaller camera preview, the start button stays at the bottom of the screen */
+  .bento-device { display: flex; flex-direction: column; height: auto; min-height: 0; gap: 12px; }
+  .bento-device .tile { padding: 14px 16px; }
+  .bento-device .tile-tips .tips-bot { display: none; }
+  .bento-device .tips-list li > span:last-child { font-size: 0; }
+  .bento-device .tips-list li > span:last-child b { font-size: 14px; }
+  .bento-device .tips-list { gap: 6px; }
+  .bento-device .tile-cam .cam-box { flex: none; height: 200px; }
+  .bento-device .tile-go { position: sticky; bottom: 0; z-index: 5; box-shadow: 0 -8px 24px rgba(15, 30, 50, 0.10); }
+  .bento-device .tile-go .btn-lg { width: 100%; justify-content: center; }
+
+  /* Interview: AIMIS Bot and the camera side by side; the buttons stay at the bottom of the screen */
+  .iv-media { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .iv-media .ai-box { min-height: 0; height: 200px; padding: 10px 8px; }
+  .iv-media .ai-box .robot { width: 74px; height: auto; }
+  .iv-media .ai-box .ai-name { font-size: 14px; margin: 2px 0 0; }
+  .iv-media .ai-box .live-tip { font-size: 12px; max-width: 100%; max-height: 52px; overflow: hidden; padding: 6px 8px; }
+  .iv-media .ai-box .iv-timer { font-size: 15px; }
+  .iv-media .cam-box-live { height: 200px; min-height: 0; aspect-ratio: auto; }
+  .ready-card .ready-steps { display: none; }
+  .ready-card .ready-tips { font-size: 14px; }
+  .ready-card .ready-title { font-size: 21px; }
+  .chat-actions { position: sticky; bottom: 0; z-index: 6; background: var(--surface); margin: 0 -12px -12px; padding: 10px 12px;
+    border-top: 1px solid var(--border); }
+  .chat-actions .btn-row .btn { flex: 1; justify-content: center; }
+
+  /* Results report: smaller top score card */
+  .tile-overall { padding: 16px; flex-direction: row; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  .tile-overall .robot, .tile-overall svg { width: 64px; height: auto; }
+  .tile-overall .overall-num { font-size: 48px; }
+}
+@media (max-width: 640px) {
+  .dash-fit .dash-hero { grid-template-columns: minmax(0, 1fr); }
+  .dash-fit .dash-hero-text, .dash-hero-actions { min-width: 0; }
+  .dash-quick { margin-right: 0; padding-right: 0; }
+  .pill span { font-size: 13.5px; padding: 10px 4px; }
+  .iv-media { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .iv-media > * { min-width: 0; }
+  .iv-media .ai-box { height: auto; min-height: 210px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; }
+  .iv-media .cam-box-live { height: auto; min-height: 210px; }
+  .iv-media .ai-box .live-tip { position: static; margin: 4px 0 0; }
+  .chat-actions { background: inherit; }
+  .iv-chat { background-clip: padding-box; }
+}
+@media (max-width: 640px) {
+  .iv-media #interviewer { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+    height: auto; min-height: 220px; max-height: none; padding: 40px 8px 10px; overflow: hidden; }
+  .iv-media #interviewer .robot { width: 70px; height: 76px; }
+  .iv-media #interviewer .ai-name { margin: 0; }
+  .iv-media #interviewer .live-tip { position: static; transform: none; margin: 4px 0 0; width: 100%; max-height: 54px; }
+  .iv-media #interviewer .iv-timer { top: 10px; right: 10px; bottom: auto; font-size: 14px; }
+  .iv-media #camBox { height: auto; min-height: 220px; max-height: none; }
+
+  .coach:not(.is-open) { bottom: 96px; }
+  .setup-form .btn-row .btn { white-space: nowrap; font-size: 16px; padding-left: 12px; padding-right: 12px; }
+  .bento-device .tile-go { gap: 8px; padding: 12px 14px; }
+  .bento-device .tile-go .go-hint, .bento-device .tile-go > p { font-size: 13px; margin: 0; }
+  .bento-device .tile-go .go-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .bento-device .tile-go .go-row .btn { width: 100%; min-height: 46px; padding: 8px 10px; font-size: 15px; justify-content: center; }
+}
+@media (max-width: 640px) {
+  .iv-media #camBox { overflow: hidden; min-height: 240px; }
+  .iv-media #camBox video, .iv-media #camBox canvas { width: 100% !important; height: 100% !important; object-fit: cover; position: absolute; inset: 0; }
+  .iv-media #interviewer { min-height: 240px; }
+  .iv-media #interviewer .live-tip { max-height: none; font-size: 11.5px; line-height: 1.35; }
+  .bento-device .tile-go .go-row .btn { font-size: 14px; white-space: nowrap; }
+}
+@media (max-width: 640px) {
+  .iv-media #interviewer, .iv-media #camBox { width: auto; max-width: none; min-width: 0; aspect-ratio: auto; }
+}
+@media (max-width: 640px) {
+  .iv-layout, .iv-chat, .iv-chat.card { overflow: visible; }
+  .ready-card .ready-facts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .ready-card .ready-facts > * { margin: 0; padding: 5px 10px; font-size: 13px; }
+  .ready-card { padding: 18px 16px; }
+  .ready-card .ready-skill { gap: 12px; }
+  .ready-card .ready-icon { display: none; }
+}
+@media (max-width: 640px) {
+  .bento-report .tile-overall { padding: 18px 16px; display: grid; grid-template-columns: auto 1fr; column-gap: 14px; align-items: center; text-align: left; }
+  .bento-report .tile-overall .mascot, .bento-report .tile-overall svg.robot { width: 64px; margin: 0; grid-row: 1 / span 3; }
+  .bento-report .tile-overall .overall-num { font-size: 44px; }
+  .h-grid .h-unfinished-note { padding: 8px 12px; }
+  .h-grid .h-pending-icon { width: 30px; height: 30px; }
+  .h-grid .h-band .h-band-name { font-size: 18px; }
+}
+@media (max-width: 640px) {
+  /* Log in / Register: the form first; the picture panel becomes a short title strip */
+  .auth-hero .auth-bot, .auth-hero .mini-chat { display: none; }
+  .auth-hero { padding: 16px 18px; min-height: 0; }
+  .auth-hero h1, .auth-hero h2 { font-size: 20px; margin: 4px 0 0; }
+  .auth-wrap { gap: 12px; }
+  /* Onboarding: the robot panel is smaller; the welcome list is tighter */
+  .setup-card.has-bot .onboard-bot .mascot { width: 64px; }
+  .setup-card .onboard-slide h1.setup-welcome { font-size: 28px; }
+  .intro-points li { padding: 12px 14px; }
+}
+@media (max-width: 640px) {
+  .setup-card.has-bot .setup-nav { position: sticky; bottom: 0; z-index: 5; background: var(--surface); margin: 0 -16px; padding: 12px 16px;
+    border-top: 1px solid var(--border); }
+}
+/* No cut-off chips or tabs: rows wrap onto the next line instead of running off the edge */
+@media (max-width: 640px) {
+  .dash-quick { flex-wrap: wrap; overflow: visible; margin-right: 0; padding-right: 0; }
+  .dash-quick .quick-chip { flex-shrink: 1; font-size: 13px; padding: 6px 10px; }
+  .dash-quick-label { width: 100%; }
+  .filter-tabs { flex-wrap: wrap; overflow: visible; gap: 6px; }
+  .filter-tabs a { padding: 7px 12px; font-size: 14.5px; }
+  .how-steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; overflow: visible; }
+  .how-steps li { flex: none; min-width: 0; padding: 10px 8px; flex-direction: column; align-items: flex-start; gap: 6px; }
+  .how-steps li b { font-size: 13px; line-height: 1.25; white-space: normal; }
+}
+/* Long names wrap instead of ending in "…" */
+.h-job-line span { white-space: normal; overflow: visible; text-overflow: clip; }
+.h-grid .h-meta-line { flex-wrap: wrap; white-space: normal; }
+@media (max-width: 640px) {
+  .rubric-table { table-layout: fixed; width: 100%; min-width: 0; font-size: 12.5px; }
+  .rubric-table th, .rubric-table td { padding: 6px 5px; overflow-wrap: anywhere; word-break: normal; hyphens: auto; }
+  .rubric-wrap, .table-wrap { overflow: visible; }
+}
+
+/* Wide admin tables: rows become cards on phones and tablets so no column runs off the screen */
+@media (max-width: 1023px) {
+  .table-scroll { overflow: visible !important; max-height: none !important; }
+  .table-scroll > .data-table, .table-scroll > .data-table tbody, .table-scroll > .data-table tr, .table-scroll > .data-table td { display: block; width: 100%; }
+  .table-scroll > .data-table thead { display: none; }
+  .table-scroll > .data-table tbody { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; padding: 12px; }
+  .table-scroll > .data-table tr { border: 1px solid var(--border); border-radius: 14px; padding: 10px 14px; background: var(--surface); min-width: 0; }
+  .table-scroll > .data-table tbody tr:hover td { background: transparent; }
+  body.is-admin .table-scroll > .data-table td, .table-scroll > .data-table td { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 5px 0 !important; border: 0 !important; text-align: right; white-space: normal !important; overflow-wrap: anywhere; min-width: 0; }
+  .table-scroll > .data-table td::before { content: attr(data-label); font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; text-align: left; flex-shrink: 0; }
+  .table-scroll > .data-table td:first-child { font-size: 15px; font-weight: 700; text-align: left; justify-content: flex-start; padding-bottom: 8px !important; }
+  .table-scroll > .data-table td:first-child::before, .table-scroll > .data-table td:not([data-label])::before { content: none; }
+  .table-scroll > .data-table td:last-child:not([data-label]) { justify-content: flex-end; padding-top: 8px !important; }
+}
+/* Question bank toolbar wraps on phones */
+@media (max-width: 640px) {
+  .q-panel { min-width: 0; max-width: 100%; }
+  .q-toolbar .segmented { display: flex; flex-wrap: wrap; width: 100%; }
+  .q-toolbar .segmented a { flex: 1 1 auto; text-align: center; padding: 7px 10px; }
+  .q-filter { flex-wrap: wrap; width: 100%; }
+  .q-filter select { flex: 1 1 140px; min-width: 0; }
+}
+
+/* No skill icons: names only */
+.pick-card { justify-content: center; min-height: 64px; }
+.quick-chip { gap: 0; }
+.dash-job > span { display: flex; flex-direction: column; line-height: 1.25; padding-left: 4px; }
+
+/* New logo: a friendly chat-bubble bot on its own blue tile (no white box around it) */
+.brand-logo, .brand-logo img { background: transparent !important; }
+.brand-logo { padding: 0; border: 0; border-radius: 11px; box-shadow: 0 3px 10px rgba(47, 138, 212, 0.28); }
+.brand-logo img { object-fit: cover; }

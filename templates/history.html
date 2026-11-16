@@ -26,16 +26,25 @@
       <div class="h-cell" data-page="{{ (loop.index0 // PER_PAGE) + 1 }}"{{ ' hidden' if loop.index > PER_PAGE }}>{{ history_card(i) }}</div>
     {% endfor %}
   </div>
-  {% if pages > 1 %}
-    <nav class="pager" id="historyPager" aria-label="Interview history pages" data-pages="{{ pages }}">
+  {% if interviews | length > 4 %}
+    <nav class="pager" id="historyPager" aria-label="Interview history pages" data-per-page="{{ PER_PAGE }}">
       <button type="button" class="page-btn page-nav" data-go="prev" disabled>Prev</button>
       <span class="page-nums"></span>
       <button type="button" class="page-btn page-nav page-next" data-go="next">Next</button>
     </nav>
     <script>
       (function () {
+        // 9 cards per page on computers, 4 on phones (less scrolling); recalculated when the screen size changes
         var pager = document.getElementById("historyPager"), nums = pager.querySelector(".page-nums");
-        var cells = document.querySelectorAll("#historyGrid .h-cell"), total = +pager.dataset.pages, current = 1;
+        var cells = Array.prototype.slice.call(document.querySelectorAll("#historyGrid .h-cell"));
+        var phone = window.matchMedia("(max-width: 640px)"), per, total, current = 1;
+        function layout() {
+          per = phone.matches ? 4 : +pager.dataset.perPage;
+          total = Math.max(1, Math.ceil(cells.length / per));
+          cells.forEach(function (c, i) { c.dataset.page = Math.floor(i / per) + 1; });
+          pager.hidden = total < 2;
+          show(Math.min(current, total));
+        }
         function show(page) {
           current = Math.max(1, Math.min(total, page));
           cells.forEach(function (c) { c.hidden = +c.dataset.page !== current; });
@@ -62,7 +71,8 @@
           show(go === "prev" ? current - 1 : go === "next" ? current + 1 : +go);
           window.scrollTo({ top: 0, behavior: "smooth" });
         });
-        show(1);
+        if (phone.addEventListener) phone.addEventListener("change", layout);
+        layout();
       })();
     </script>
   {% endif %}
