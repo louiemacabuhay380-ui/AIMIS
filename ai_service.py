@@ -39,6 +39,11 @@ For EACH answer also write personal feedback about that exact answer, using what
   (e.g. "Say what you did when your groupmate missed the deadline and how it ended").
 - example: 1-2 sentences showing how they could say this answer better, in first person, based on their own
   story. Do not invent facts: put details they must fill in inside [square brackets].
+- substance: the parts this answer needed and whether the candidate included each one. For a story question
+  use the STAR parts "Situation", "Task", "Action", "Result"; for the introduction use "Who you are",
+  "Relevant background", "Why this job"; for other questions use the 2 to 4 parts that question needs.
+  For each part: included = true only if the candidate actually said it in THIS answer; add = "" if included,
+  otherwise one short sentence (under 20 words) on what to add, using their own story.
 - skills: rate 2 to 4 of these sub-skills that this answer shows (use these exact names):
   {skill_names}
   Each one gets a rating "strong", "okay" or "weak" and a short reason (under 20 words) that points to
@@ -66,7 +71,8 @@ Never write general advice that could fit any candidate. For example:
 Return only JSON in exactly this format:
 {{"answers": [{{"question_number": 1, "relevance": 0, "directness": 0, "completeness": 0, "specificity": 0,
    "grammar": 0, "good": "", "good_quote": "", "feedback": "", "weak_quote": "", "better_answer": "",
-   "example": "", "skills": [{{"skill": "Critical thinking", "rating": "weak", "reason": ""}}]}}],
+   "example": "", "substance": [{{"part": "Situation", "included": true, "add": ""}}],
+   "skills": [{{"skill": "Critical thinking", "rating": "weak", "reason": ""}}]}}],
  "strengths": [{{"answer": 1, "point": "", "quote": ""}}],
  "improvements": [{{"answer": 1, "point": "", "quote": "", "fix": "", "example": ""}}],
  "next_focus": ""{progress_field}}}
@@ -225,11 +231,15 @@ Also write, about THIS answer only, speaking to the candidate ("you"):
 - better_answer: what to do differently in this answer, using their own situation.
 - example: 1-2 sentences showing a better way to say it, in first person; put details they must fill in
   inside [square brackets]. Do not invent facts.
+- substance: the parts this answer needed (STAR parts "Situation", "Task", "Action", "Result" for a story question;
+  "Who you are", "Relevant background", "Why this job" for the introduction), each with included true/false and,
+  if missing, add = one short sentence on what to add from their own story.
 - skills: 2 or 3 of these sub-skills ({skill_names}), each with rating "strong", "okay" or "weak" and a short reason.
 
 Return only JSON in exactly this format:
 {{"relevance": 0, "directness": 0, "completeness": 0, "specificity": 0, "grammar": 0, "good": "", "good_quote": "",
   "feedback": "", "weak_quote": "", "better_answer": "", "example": "",
+  "substance": [{{"part": "", "included": true, "add": ""}}],
   "skills": [{{"skill": "", "rating": "", "reason": ""}}]}}"""
 
 
@@ -387,7 +397,10 @@ what happened next, how it ended, or what they learned (e.g. "You mentioned you 
 went down. How did you decide who would do what?").
 If the answer has NO substance (empty, very short, off-topic, "I don't know", or only general claims such as
 "I am a hard worker" with nothing specific), do NOT follow up: follow_up must be "" and the interview moves on
-to the next question. Never ask them to repeat themselves or simply to "give an example"."""
+to the next question. Never ask them to repeat themselves or simply to "give an example".
+Keep following up as long as the answer still has something real to dig into: there is no fixed number of
+follow-ups. Move on (follow_up = "") once the story is fully told (what happened, what THEY did, how it ended,
+and what they learned), or when their last answer added nothing new."""
 
 FOLLOW_BLOCKED = """Do not ask a follow-up question: follow_up must be ""."""
 

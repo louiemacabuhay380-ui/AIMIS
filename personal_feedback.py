@@ -1,3 +1,4 @@
+import json
 """Personalized feedback: per-answer feedback, sub-skill labels, and comparison with past interviews."""
 import re
 from ai_service import SKILL_LABELS
@@ -47,7 +48,25 @@ def clean_answer_feedback(item, transcript):
         good_quote = ""
     example = str(item.get("example") or "").strip()[:600]
     return {"feedback": feedback, "weak_quote": quote, "better_answer": better, "skills": skills[:4],
-            "good": good, "good_quote": good_quote, "example": example}
+            "good": good, "good_quote": good_quote, "example": example,
+            "substance": clean_substance(item.get("substance"))}
+
+
+def clean_substance(parts):
+    """The parts an answer needed (STAR, or the introduction's parts) and which ones the candidate included."""
+    out, seen = [], set()
+    for p in parts if isinstance(parts, list) else []:
+        if not isinstance(p, dict):
+            continue
+        name = " ".join(str(p.get("part") or "").split())[:30]
+        if not name or name.lower() in seen:
+            continue
+        seen.add(name.lower())
+        inc = p.get("included")
+        included = inc is True or str(inc).strip().lower() in ("true", "yes", "1")
+        add = "" if included else " ".join(str(p.get("add") or "").split())[:220]
+        out.append({"part": name, "included": included, "add": add})
+    return out[:4]
 
 
 def save_answer_feedback(cursor, qa_list, ai_answers):
@@ -70,6 +89,12 @@ def save_answer_feedback(cursor, qa_list, ai_answers):
         cursor.execute("""INSERT INTO answer_feedback (response_id, feedback, weak_quote, better_answer)
                           VALUES (%s, %s, %s, %s)""",
                        (qa["response_id"], fb["feedback"], fb["weak_quote"], fb["better_answer"]))
+        if fb["substance"]:
+            try:   # older databases get the column at startup (db.NEW_COLUMNS)
+                cursor.execute("UPDATE answer_feedback SET substance = %s WHERE response_id = %s",
+                               (json.dumps(fb["substance"]), qa["response_id"]))
+            except Exception as e:
+                print("Could not save the answer's substance checklist:", e)
         for s in fb["skills"]:
             cursor.execute("""INSERT INTO skill_labels (response_id, skill, rating, reason)
                               VALUES (%s, %s, %s, %s)""",
@@ -84,6 +109,7 @@ def attach_answer_feedback(cursor, answers):
         a.setdefault("weak_quote", None)
         a.setdefault("better_answer", None)
         a.setdefault("skills", [])
+        a.setdefault("substance", [])
     ids = [a["response_id"] for a in answers if a.get("response_id")]
     if not ids:
         return answers
@@ -105,6 +131,10 @@ def attach_answer_feedback(cursor, answers):
             a["answer_feedback"] = row["feedback"] or None
             a["weak_quote"] = row["weak_quote"] or None
             a["better_answer"] = row["better_answer"] or None
+            try:
+                a["substance"] = clean_substance(json.loads(row.get("substance") or "[]"))
+            except (ValueError, TypeError, AttributeError):
+                a["substance"] = []
         a["skills"] = sorted([l for l in labels if l["response_id"] == a.get("response_id")],
                              key=lambda l: order.get(l["rating"], 3))
     return answers

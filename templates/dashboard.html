@@ -7,14 +7,7 @@
 {% set first = (session.full_name or 'there').split(' ')[0] %}
 <div class="dash dash-fit">
 
-  {% if unfinished %}
-    {% set u = unfinished[0] %}
-    <section class="dash-alert" role="status">
-      <span class="badge badge-warn">Unfinished</span>
-      <p>You have an unfinished <b>{{ u.category }}</b> interview from {{ u.started_at.strftime('%b %d') }}.</p>
-      <a href="{{ url_for('interview', interview_id=u.interview_id) }}" class="btn btn-sm">Continue it</a>
-    </section>
-  {% endif %}
+  {# Unfinished interviews are shown with red badges on the menu, Interview history and the Unfinished tab #}
 
   {# ---- Welcome: one Start button, the target job, and quick skill shortcuts (solid light blue, no gradient) ---- #}
   <section class="dash-hero">

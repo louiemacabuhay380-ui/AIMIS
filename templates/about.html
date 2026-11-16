@@ -99,4 +99,6 @@
     show(0);
   })();
 </script>
+
+{% if session.get('role') == 'student' %}{% from "_chat.html" import chat_widget %}{{ chat_widget() }}{% endif %}
 {% endblock %}

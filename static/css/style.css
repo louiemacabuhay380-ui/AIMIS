@@ -3306,3 +3306,114 @@ body.is-admin .label-line span:last-child { white-space: nowrap; flex-shrink: 0;
 [data-theme="dark"] .check-no .check-mark { background: #351c1f; border-color: #522a2e; color: #f87171; }
 [data-theme="dark"] .check-near .check-mark { color: var(--warn); }
 .rubric-help .rubric-math { margin: 12px 0 18px; }
+/* Onboarding: AIMIS Bot's blue panel runs the full height of the card, robot centered and a bit bigger */
+@media (min-width: 861px) {
+  .setup-card.has-bot { align-items: stretch; }
+  .setup-card.has-bot .onboard-bot { align-self: stretch; position: static; justify-content: center; gap: 22px; padding: 28px 14px; }
+  .setup-card.has-bot .onboard-bot .mascot { width: 200px; }
+  .setup-card.has-bot .onboard-bot .speech { max-width: 210px; font-size: 16px; }
+}
+/* Toast notifications: top right, slide in, fade out on their own (5 s; 8 s for problems), pause on hover */
+.toast-stack { position: fixed; top: 84px; right: 22px; z-index: 2000; display: flex; flex-direction: column; gap: 10px;
+  width: min(380px, calc(100vw - 32px)); pointer-events: none; }
+.toast { pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; padding: 13px 12px 13px 14px;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-left: 4px solid var(--primary);
+  border-radius: 12px; box-shadow: 0 10px 28px rgba(15, 30, 50, 0.16); font-size: 14.5px; line-height: 1.45;
+  animation: toast-in .28s ease-out both; }
+.toast-ok { border-left-color: #27ae60; }
+.toast-ok .toast-icon { color: #27ae60; }
+.toast-warn { border-left-color: #e67e22; }
+.toast-warn .toast-icon { color: #e67e22; }
+.toast-icon { display: flex; flex-shrink: 0; margin-top: 1px; }
+.toast-text { flex: 1; min-width: 0; }
+.toast-close { background: none; border: none; color: var(--muted); font-size: 20px; line-height: 1; cursor: pointer;
+  padding: 0 4px; margin-top: -1px; border-radius: 6px; }
+.toast-close:hover { color: var(--text); background: var(--primary-soft); }
+.toast-out { animation: toast-out .26s ease-in both; }
+@keyframes toast-in { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateX(24px); } }
+[data-theme="dark"] .toast { box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45); }
+@media (max-width: 600px) { .toast-stack { top: 12px; right: 16px; left: 16px; width: auto; } }
+@media (prefers-reduced-motion: reduce) { .toast, .toast-out { animation: none; } }
+/* Toasts in light blue (same family as the old message bar) */
+.toast, .toast-ok, .toast-warn { background: var(--primary-soft); border-color: #cfe4f6; border-left-color: var(--primary); }
+.toast-ok .toast-icon, .toast-warn .toast-icon { color: var(--primary); }
+.toast-close:hover { background: rgba(52, 152, 219, 0.14); }
+[data-theme="dark"] .toast, [data-theme="dark"] .toast-ok, [data-theme="dark"] .toast-warn { background: #1a2b3a; border-color: #24405a; border-left-color: #5dade2; }
+[data-theme="dark"] .toast-icon { color: #5dade2 !important; }
+/* Sidebar hidden on every screen size: a menu button (three bars) beside the logo slides it out */
+@media (min-width: 1024px) {
+  .mobile-bar { position: sticky; top: 0; z-index: 50; display: flex; align-items: center; gap: 12px;
+    padding: 12px clamp(20px, 3vw, 44px); background: var(--surface); border-bottom: 1px solid var(--border); }
+  .sidebar { transform: translateX(-102%); transition: transform 0.22s ease; box-shadow: none; }
+  body.side-open .sidebar { transform: none; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.30); }
+  .side-close { display: inline-grid; }
+  body.has-sidebar > .container { margin-left: 0; }
+}
+.mobile-bar #sideOpen { width: 42px; height: 42px; border-radius: 10px; }
+.mobile-bar #sideOpen:hover { background: var(--primary-soft); color: var(--primary); }
+.side-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+/* Sidebar is hidden now, so pages use the whole width: Home fills the screen, the profile form is centered */
+.dash.dash-fit { max-width: none; }
+.profile-form, .profile-form + .profile-form, .page-head:has(+ .profile-form), .page-head:has(#editProfile) { margin-left: auto; margin-right: auto; width: 100%; max-width: 980px; }
+/* Messenger-style red badges for unfinished interviews */
+.notif-badge, .filter-tabs a span.notif-badge, .filter-tabs a.active span.notif-badge {
+  display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 999px;
+  background: #e41e3f; color: #fff; font-size: 12px; font-weight: 700; line-height: 1;
+  box-shadow: 0 0 0 2px var(--surface); }
+.side-link .notif-badge { margin-left: auto; }
+#sideOpen { position: relative; }
+.notif-dot { position: absolute; top: 6px; right: 6px; width: 10px; height: 10px; border-radius: 50%; background: #e41e3f;
+  box-shadow: 0 0 0 2px var(--surface); }
+/* Badge number exactly centered in the red circle (the sidebar's span rule made it a column box) */
+.side-link span.notif-badge, .notif-badge { display: inline-flex; flex-direction: row; align-items: center; justify-content: center;
+  box-sizing: border-box; min-width: 20px; height: 20px; padding: 0 6px; line-height: 1; font-size: 12px; font-weight: 700;
+  font-variant-numeric: tabular-nums; text-align: center; flex-shrink: 0; }
+/* Home welcome card: a slightly stronger light blue so it stands out (still soft) */
+.dash-fit .dash-hero { background: #c6e1f6; border-color: #9fcaec; }
+[data-theme="dark"] .dash-fit .dash-hero { background: #0e3350; border-color: #1b5a86; }
+/* Interview history cards: no skill icon; the skill name is the header and the text is larger */
+.h-grid .h-card .session-icon { display: none; }
+.h-grid .h-card-title h3 { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.2; }
+.h-grid .h-card-title p { font-size: 15.5px; margin-top: 4px; }
+.h-grid .h-meta-line { font-size: 15.5px; margin-top: -2px; }
+.h-grid .h-meta-line .h-level-tag { font-size: 14px; padding: 4px 12px; }
+.h-grid .h-band .h-band-name { font-size: 21px; }
+.h-grid .h-band small { font-size: 15px; }
+.h-grid .h-mini-box span { font-size: 14px; }
+.h-grid .h-mini-box b { font-size: 32px; }
+.h-grid .h-card .h-action, .h-grid .h-card .h-action-row .btn { font-size: 16.5px; }
+.h-meta-line .h-job { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.h-grid .h-meta-line { flex-wrap: nowrap; gap: 6px; font-size: 15px; white-space: nowrap; }
+.h-grid .h-meta-line .h-job { flex: 1 1 0; min-width: 0; }
+.h-job-line { display: flex; align-items: center; gap: 7px; margin: -8px 0 0; color: var(--muted); font-size: 15px; min-width: 0; }
+.h-job-line svg { flex-shrink: 0; color: var(--primary); }
+.h-job-line span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dash .h-job-line { font-size: 13.5px; margin-top: -6px; }
+.h-job-line b { font-weight: 600; color: var(--text); }
+/* Report: which parts of an answer were included (STAR or the introduction's parts) and what to add */
+.substance { margin: 0 0 12px; padding: 12px 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); }
+.substance-title { margin: 0 0 8px; font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+.substance-complete .substance-title { color: var(--ring-good); }
+.substance-parts { list-style: none; display: flex; flex-wrap: wrap; gap: 8px; margin: 0; padding: 0; }
+.substance-parts li { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 14.5px; font-weight: 700; }
+.substance-parts li.is-in { background: color-mix(in srgb, var(--ring-good) 13%, var(--surface)); color: var(--ring-good); }
+.substance-parts li.is-missing { background: color-mix(in srgb, var(--ring-low) 11%, var(--surface)); color: var(--ring-low); }
+.substance-add { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 6px; font-size: 15px; line-height: 1.5; }
+.substance-add b { color: var(--ring-low); }
+.visually-hidden { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Interview history: the card's top part (skill, date, level, job) in a box with the Home welcome card's blue */
+.h-top { display: flex; flex-direction: column; gap: 12px; }
+.h-grid .h-top { margin: 0; padding: 16px 18px; border-radius: 16px; background: #c6e1f6; border: 1px solid #9fcaec; }
+.h-grid .h-top .h-meta-line, .h-grid .h-top .h-job-line { margin-top: 0; }
+.h-grid .h-top .h-card-title h3 { color: #0c2a4d; }
+.h-grid .h-top .h-card-title p, .h-grid .h-top .h-meta-line, .h-grid .h-top .h-job-line { color: #334e68; }
+.h-grid .h-top .h-job-line b { color: #0c2a4d; }
+.h-grid .h-top .h-level-tag { background: #fff; color: #2577b0; }
+[data-theme="dark"] .h-grid .h-top { background: #0e3350; border-color: #1b5a86; }
+[data-theme="dark"] .h-grid .h-top .h-card-title h3, [data-theme="dark"] .h-grid .h-top .h-job-line b { color: #eaf4fc; }
+[data-theme="dark"] .h-grid .h-top .h-card-title p, [data-theme="dark"] .h-grid .h-top .h-meta-line, [data-theme="dark"] .h-grid .h-top .h-job-line { color: #a9c4d9; }
+[data-theme="dark"] .h-grid .h-top .h-level-tag { background: #17324a; color: #85c1e9; }
+/* History cards: only the numbers are green / orange / red; the score box and band name stay neutral */
+.h-grid .h-lvl-good .h-card-score, .h-grid .h-lvl-ok .h-card-score, .h-grid .h-lvl-low .h-card-score { background: var(--surface-2); }
+.h-grid .h-lvl-good .h-band-name, .h-grid .h-lvl-ok .h-band-name, .h-grid .h-lvl-low .h-band-name { color: var(--text); }

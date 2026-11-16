@@ -179,6 +179,7 @@ CREATE TABLE IF NOT EXISTS answer_feedback (
   feedback TEXT DEFAULT NULL,
   weak_quote TEXT DEFAULT NULL,
   better_answer TEXT DEFAULT NULL,
+  substance TEXT DEFAULT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
 

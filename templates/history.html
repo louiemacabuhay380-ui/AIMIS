@@ -14,7 +14,7 @@
 <nav class="filter-tabs" aria-label="Show">
   {% for key, label in [("all", "All"), ("completed", "Completed"), ("unfinished", "Unfinished")] %}
     <a href="{{ url_for('interview_history', show=key) }}" class="{{ 'active' if show == key }}"
-       {{ 'aria-current=page' if show == key }}>{{ label }} <span>{{ counts[key] }}</span></a>
+       {{ 'aria-current=page' if show == key }}>{{ label }} <span class="{{ 'notif-badge' if key == 'unfinished' and counts[key] }}">{{ counts[key] }}</span></a>
   {% endfor %}
 </nav>
 

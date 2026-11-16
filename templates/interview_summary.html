@@ -586,6 +586,26 @@
         <div class="msg-body">
           <span class="msg-meta">AIMIS Bot · Feedback</span>
           <div class="bubble bubble-bot bubble-coach">
+            {% if a.substance %}
+              {% set missing = a.substance | rejectattr("included") | list %}
+              <div class="substance{{ ' substance-complete' if not missing }}">
+                <p class="substance-title">{{ "Your answer covered every part" if not missing else "What your answer included" }}</p>
+                <ul class="substance-parts" aria-label="Parts of this answer">
+                  {% for p in a.substance %}
+                    <li class="{{ 'is-in' if p.included else 'is-missing' }}">
+                      <span aria-hidden="true">{{ "✓" if p.included else "✗" }}</span>{{ p.part }}<span class="visually-hidden">{{ ": included" if p.included else ": missing" }}</span>
+                    </li>
+                  {% endfor %}
+                </ul>
+                {% if missing %}
+                  <ul class="substance-add">
+                    {% for p in missing %}
+                      <li><b>Add the {{ p.part | lower if p.part in ("Situation", "Task", "Action", "Result") else p.part }}:</b> {{ p.add if p.add else "this part is missing from your answer." }}</li>
+                    {% endfor %}
+                  </ul>
+                {% endif %}
+              </div>
+            {% endif %}
             {% if a.skills %}
               <div class="skill-list">
                 {% for sk in a.skills %}

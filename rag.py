@@ -197,6 +197,9 @@ def build_chunks(cursor, interview_id, load_report):
             lines.append(f'Weakest part, in the student\'s words: "{a["weak_quote"]}"')
         if a.get("better_answer"):
             lines.append(f"A stronger answer would: {a['better_answer']}")
+        miss = [p["part"] for p in a.get("substance") or [] if not p.get("included")]
+        if miss:
+            lines.append("Missing from this answer: " + ", ".join(miss))
         chunks.append({"response_id": a["response_id"], "question_order": a["question_order"],
                        "kind": "answer", "content": "\n".join(lines)})
     return iv, chunks
@@ -684,6 +687,11 @@ pagbutihin gumaling galingan kabado kinakabahan kumpiyansa boses pagsasalita tin
 aplay kaba kabahan kinabahan nerbyos mababa mataas galing husay magaling ensayo magsanay sanay
 tiwala sarili ipakilala pagpapakilala ugali""".split())
 
+# Short conversational replies that still belong in a chat about the student's interviews
+CHAT_WORDS = set("""hi hello hey yo good morning afternoon evening thanks thank you ty salamat ok okay k sure yes yeah
+yep no nope why how what which when where who more again explain elaborate example continue go on next really
+huh hmm bakit paano ano alin kailan saan sino sige oo opo hindi talaga ulit pa please pls paki""".split())
+
 OFF_TOPIC_REPLY = ("I can only help with your AIMIS mock interviews and interview skills. "
                    "Try asking: \"Which answer was my weakest, and why?\"")
 
@@ -692,7 +700,13 @@ def off_topic_reply(question):
     """A fixed, polite reply if the question clearly has nothing to do with interviews; otherwise None.
     Off-topic questions never reach the AI with the student's data, so it can't bring that data up."""
     words = re.findall(r"[a-zA-Z'-]+", (question or "").lower())
-    if len(words) < 3:            # "hi", "thanks", "why?" — short follow-ups go to the AI as usual
+    if not words:
+        return None
+    if len(words) < 3 and not any(w in CHAT_WORDS for w in words) \
+            and not any(w in TOPIC_WORDS or w.rstrip("s") in TOPIC_WORDS for w in words) \
+            and not question_number(question) and not mentioned_skills(question):
+        return OFF_TOPIC_REPLY    # "adobo?", "basketball", "1+1?": short and nothing to do with interviews
+    if len(words) < 3:            # "hi", "thanks", "why?", "how?" — short follow-ups go to the AI as usual
         return None
     if any(w in TOPIC_WORDS or w.rstrip("s") in TOPIC_WORDS for w in words):
         return None
@@ -710,10 +724,12 @@ def _messages(context, history, question):
     msgs.append({"role": "user", "content": f"DATA:\n{context or '(No scored interviews yet.)'}\n\n"
                                             f"STUDENT'S QUESTION: {question}\n\n"
                                             f"LANGUAGE: {LANGUAGE_RULE[language]}\n\n"
-                                            "TOPIC: If this question is not about the student's mock interviews, "
-                                            "their interview skills or getting a job, do NOT use or mention the DATA. "
-                                            "Reply in one or two sentences that you can only help with their AIMIS "
-                                            "mock interviews, and suggest one question they could ask instead."})
+                                            "TOPIC: First decide if this question is about the student's mock "
+                                            "interviews, their interview skills or getting a job. If it is NOT (for "
+                                            "example food, sports, games, math, other school subjects or general "
+                                            "trivia), do NOT use or mention the DATA and do NOT give interview "
+                                            "advice. Reply with exactly this and nothing else: "
+                                            f"{OFF_TOPIC_REPLY}"})
     return msgs
 
 

@@ -4,6 +4,7 @@
 {% set scored = i.evaluation_id and i.overall_score is not none %}
 {% set lvl = score_level(i.overall_score) if scored else 'none' %}
 <article class="h-card h-{{ i.status }} h-lvl-{{ lvl }}">
+  <div class="h-top">
   <header class="h-card-head">
     <span class="session-icon">{{ skill_icon(i.category, 22) }}</span>
     <div class="h-card-title">
@@ -14,8 +15,10 @@
 
   <p class="h-card-meta h-meta-line">
     <span class="h-level-tag">{{ i.difficulty }}</span>
-    {{ i.number_of_questions }} question{{ 's' if i.number_of_questions != 1 }}{% if i.career_goal %} · <span title="Target job">{{ i.career_goal }}</span>{% endif %}
+    {{ i.number_of_questions }} question{{ 's' if i.number_of_questions != 1 }}
   </p>
+  {% if i.career_goal %}<p class="h-job-line" title="Target job: {{ i.career_goal }}"><span>Target job: <b>{{ i.career_goal }}</b></span></p>{% endif %}
+  </div>
 
   {% if i.status == 'completed' and scored %}
     <div class="h-card-score">

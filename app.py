@@ -44,9 +44,11 @@ CONSENT_VERSION = "v1.5"   # v1.5 = also covers the onboarding profile; v1.4 = g
 # or the next question, written by the AI from the conversation so far. ADAPTIVE_INTERVIEW=0 in .env goes back to
 # a fixed list of questions prepared at the start.
 ADAPTIVE = (os.getenv("ADAPTIVE_INTERVIEW") or "1") != "0"
-# Follow-ups dig into answers that have substance; a main question gets at most this many in a row
-MAX_FOLLOW_UPS = int(os.getenv("MAX_FOLLOW_UPS") or 2)
-MAX_INTRO_FOLLOW_UPS = 1
+# Follow-ups dig into answers that have substance. There is no small fixed limit: AIMIS Bot keeps following up
+# while the answer still has something worth exploring. The number below is only a safety stop so one question
+# can't turn into an endless loop (MAX_FOLLOW_UPS in .env changes it).
+MAX_FOLLOW_UPS = int(os.getenv("MAX_FOLLOW_UPS") or 6)
+MAX_INTRO_FOLLOW_UPS = int(os.getenv("MAX_INTRO_FOLLOW_UPS") or MAX_FOLLOW_UPS)
 LIVE_TIMEOUT = float(os.getenv("LIVE_TIMEOUT_SECONDS") or 40)   # the student never waits longer than this
 live_pool = ThreadPoolExecutor(max_workers=4)
 
@@ -90,11 +92,16 @@ def student_nav():
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
         goal = get_career(cursor, session["user_id"])
+        # Red badge (like Messenger) on the menu, Interview history and the Unfinished tab
+        cursor.execute("SELECT COUNT(*) AS n FROM interviews WHERE user_id = %s AND status = 'in_progress'",
+                       (session["user_id"],))
+        row = cursor.fetchone()
+        unfinished_count = int(row["n"]) if row else 0
         conn.close()
     except Exception:
-        goal = None
+        goal, unfinished_count = None, 0
     return {"nav_career": goal, "career_options": careers.CAREER_GOALS, "career_other": careers.OTHER,
-            "career_max": careers.MAX_LENGTH}
+            "career_max": careers.MAX_LENGTH, "unfinished_count": unfinished_count}
 
 
 # Order of the first visit (adviser's flow): log in -> What is AIMIS -> data privacy consent -> dashboard.
@@ -1228,7 +1235,7 @@ def interview(interview_id):
                 elif need_next and turn["next_question"]:
                     add_main_question(cursor, interview_id, turn["next_question"], iv)
                     added = True
-                    why = f"the answer {substance}" if allow else "follow-up limit reached for this question"
+                    why = f"the answer {substance}" if allow else "safety stop reached for follow-ups on this question"
                     print(f"[AIMIS Bot] {why}: moving on, next question written live from the conversation")
             except FutureTimeout:
                 print(f"[AIMIS Bot] the answer took longer than {LIVE_TIMEOUT:.0f}s to process "

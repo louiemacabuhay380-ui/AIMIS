@@ -263,6 +263,7 @@ def _run_script(conn, path):
 # Columns added after the first release: added automatically to an older aimis.db when the app starts
 NEW_COLUMNS = {
     "responses": {"audio_gain": "DECIMAL(6,3) DEFAULT NULL"},
+    "answer_feedback": {"substance": "TEXT DEFAULT NULL"},
     "speech_analysis": {"long_pause_count": "INTEGER DEFAULT NULL", "jitter": "DECIMAL(6,3) DEFAULT NULL",
                         "shimmer": "DECIMAL(6,3) DEFAULT NULL", "voice_steadiness": "DECIMAL(5,2) DEFAULT NULL"},
     "behavior_analysis": {"nods_per_min": "DECIMAL(6,2) DEFAULT NULL", "gestures_per_min": "DECIMAL(6,2) DEFAULT NULL",

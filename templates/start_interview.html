@@ -90,4 +90,6 @@
     btn.textContent = "{{ 'Writing your questions...' if live and not adaptive else 'Preparing...' }}";
   });
 </script>
+
+{% if session.get('role') == 'student' %}{% from "_chat.html" import chat_widget %}{{ chat_widget() }}{% endif %}
 {% endblock %}

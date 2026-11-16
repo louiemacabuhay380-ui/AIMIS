@@ -160,7 +160,7 @@
   {% set ep = request.endpoint or '' %}
   {# ---- Phone and tablet: top bar with a menu button that opens the sidebar ---- #}
   <header class="mobile-bar">
-    <button type="button" class="icon-btn" id="sideOpen" aria-controls="sidebar" aria-expanded="false" aria-label="Open menu">{{ ui_icon("menu", 22) }}</button>
+    <button type="button" class="icon-btn" id="sideOpen" aria-controls="sidebar" aria-expanded="false" aria-label="Open menu{{ ', ' ~ unfinished_count ~ ' unfinished interview' ~ ('s' if unfinished_count != 1) if unfinished_count }}">{{ ui_icon("menu", 22) }}{% if unfinished_count %}<span class="notif-dot" aria-hidden="true"></span>{% endif %}</button>
     {{ brand() }}
   </header>
   <div class="side-scrim" id="sideScrim" hidden></div>
@@ -183,7 +183,7 @@
         <p class="side-label">Practice</p>
         <a href="{{ url_for('dashboard') }}" class="side-link {{ 'active' if ep == 'dashboard' }}">{{ ui_icon("home", 20) }}<span>Home</span></a>
         <a href="{{ url_for('start_interview') }}" class="side-link {{ 'active' if ep in ('start_interview', 'device_check', 'interview') }}">{{ ui_icon("mic", 20) }}<span>Start interview</span></a>
-        <a href="{{ url_for('interview_history') }}" class="side-link {{ 'active' if ep in ('interview_history', 'interview_summary', 'processing') }}">{{ ui_icon("history", 20) }}<span>Interview history</span></a>
+        <a href="{{ url_for('interview_history') }}" class="side-link {{ 'active' if ep in ('interview_history', 'interview_summary', 'processing') }}">{{ ui_icon("history", 20) }}<span>Interview history</span>{% if unfinished_count %}<span class="notif-badge" title="{{ unfinished_count }} unfinished" aria-label="{{ unfinished_count }} unfinished">{{ unfinished_count if unfinished_count < 100 else '99+' }}</span>{% endif %}</a>
         {% if session.get('role') == 'rater' %}
           <a href="{{ url_for('rate_answers') }}" class="side-link {{ 'active' if ep == 'rate_answers' }}">{{ ui_icon("check", 20) }}<span>Rate answers</span></a>
         {% endif %}
@@ -219,12 +219,40 @@
 
   <main class="container {% block main_class %}{% endblock %}">
     {% with messages = get_flashed_messages() %}
-      {% for m in messages %}
-        <div class="flash" role="status">
-          <span>{{ m }}</span>
-          <button type="button" class="flash-close" aria-label="Dismiss" onclick="this.parentElement.remove()">×</button>
-        </div>
-      {% endfor %}
+      {% if messages %}
+      {# Toast notifications, top right. Messages about a problem get the orange style. #}
+      {% set problem_words = ["couldn't", "can't", "wrong", "incorrect", "not found", "invalid", "expired", "don't match",
+                              "please", "choose", "fill in", "need to", "only", "too many", "no longer", "deactivated",
+                              "didn't", "error", "first,", "tick the box", "no questions", "withdrew", "out of date",
+                              "already registered", "at least"] %}
+      <div class="toast-stack" aria-live="polite">
+        {% for m in messages %}
+          {% set low = m|lower %}
+          {% set ns = namespace(problem=false) %}
+          {% for w in problem_words %}{% if w in low %}{% set ns.problem = true %}{% endif %}{% endfor %}
+          <div class="toast {{ 'toast-warn' if ns.problem else 'toast-ok' }}" role="{{ 'alert' if ns.problem else 'status' }}">
+            <span class="toast-icon" aria-hidden="true">
+              {% if ns.problem %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+              {% else %}<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 12.5l2.8 2.8L16 10"/></svg>{% endif %}
+            </span>
+            <span class="toast-text">{{ m }}</span>
+            <button type="button" class="toast-close" aria-label="Dismiss">×</button>
+          </div>
+        {% endfor %}
+      </div>
+      <script>
+        (function () {
+          document.querySelectorAll('.toast-stack .toast').forEach(function (t, i) {
+            var hide = function () { t.classList.add('toast-out'); setTimeout(function () { t.remove(); }, 260); };
+            var wait = t.classList.contains('toast-warn') ? 8000 : 5000;
+            var timer = setTimeout(hide, wait + i * 400);
+            t.addEventListener('mouseenter', function () { clearTimeout(timer); });
+            t.addEventListener('mouseleave', function () { timer = setTimeout(hide, 2500); });
+            t.querySelector('.toast-close').addEventListener('click', hide);
+          });
+        })();
+      </script>
+      {% endif %}
     {% endwith %}
     {% block content %}{% endblock %}
   </main>

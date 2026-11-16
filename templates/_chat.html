@@ -18,7 +18,7 @@
         <span>{{ 'About this interview' if on_report else 'About all your interviews' }}</span>
       </div>
       <span class="coach-status" id="coachStatus" data-state="checking">Checking AI…</span>
-      <button type="button" class="coach-icon" id="coachClear" title="Clear this chat" aria-label="Clear this chat">
+      <button type="button" class="coach-icon" id="coachClear" title="Clear the chat" aria-label="Clear the chat">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg>
       </button>
       <button type="button" class="coach-icon" id="coachClose" title="Close" aria-label="Close chat">
@@ -74,16 +74,19 @@
   let loaded = false, busy = false;
 
   // ---- open / close
-  function setOpen(open) {
+  function setOpen(open, restoring) {
     panel.hidden = !open;
     fab.setAttribute("aria-expanded", open);
     root.classList.toggle("is-open", open);
+    try { sessionStorage.setItem("aimis-coach-open", open ? "1" : "0"); } catch (e) {}
     if (open) {
       if (!loaded) { loaded = true; loadHistory(); checkStatus(); }
-      setTimeout(function () { input.focus(); }, 50);
+      if (!restoring) setTimeout(function () { input.focus(); }, 50);
     }
   }
   fab.addEventListener("click", function () { setOpen(panel.hidden); });
+  // If the chat was open on the last page, keep it open here with the same conversation
+  try { if (sessionStorage.getItem("aimis-coach-open") === "1") setOpen(true, true); } catch (e) {}
   document.getElementById("coachClose").addEventListener("click", function () { setOpen(false); fab.focus(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape" && !panel.hidden) setOpen(false); });
 
@@ -167,11 +170,6 @@
     const bot = addMessage("bot", "");
     bot.classList.add("typing");
     bot.innerHTML = '<span class="dots"><i></i><i></i><i></i></span>';
-    // If the local AI is slow (e.g. loading the model), say so instead of looking frozen
-    const slow = setTimeout(function () {
-      if (bot.classList.contains("typing"))
-        bot.insertAdjacentHTML("beforeend", '<span class="coach-wait">Reading your interview results… the first answer can take a little longer while the AI loads.</span>');
-    }, 4000);
 
     fetch("{{ url_for('chat_ask') }}", {
       method: "POST", headers: {"Content-Type": "application/json"},
@@ -208,7 +206,7 @@
       bot.classList.remove("typing");
       bot.classList.add("error");
       bot.textContent = err.message || "Couldn't reach the server.";
-    }).finally(function () { clearTimeout(slow); busy = false; send.disabled = false; input.focus(); });
+    }).finally(function () {  busy = false; send.disabled = false; input.focus(); });
   }
 
   // ---- account requests: the change is saved only after the student presses Confirm

@@ -37,13 +37,12 @@ def register(app, get_db, load_report):
             return jsonify(error="login"), 401
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
-        interview_id = own_interview(cursor, user_id, request.args.get("interview_id"))
-        where, value = scope_sql(interview_id)
-        params = [user_id] + ([value] if value else []) + [HISTORY_SHOWN]
+        # One conversation on every page: the chat stays when the student moves between Home, History and reports
+        params = [user_id, HISTORY_SHOWN]
         try:
-            cursor.execute(f"""SELECT role, content, sources FROM chat_messages
-                               WHERE user_id = %s AND {where}
-                               ORDER BY message_id DESC LIMIT %s""", params)
+            cursor.execute("""SELECT role, content, sources FROM chat_messages
+                              WHERE user_id = %s
+                              ORDER BY message_id DESC LIMIT %s""", params)
             rows = list(reversed(cursor.fetchall()))
         except Exception as e:
             conn.close()
@@ -60,10 +59,7 @@ def register(app, get_db, load_report):
             return jsonify(error="login"), 401
         conn = get_db()
         cursor = conn.cursor(dictionary=True)
-        interview_id = own_interview(cursor, user_id, (request.get_json(silent=True) or {}).get("interview_id"))
-        where, value = scope_sql(interview_id)
-        cursor.execute(f"DELETE FROM chat_messages WHERE user_id = %s AND {where}",
-                       [user_id] + ([value] if value else []))
+        cursor.execute("DELETE FROM chat_messages WHERE user_id = %s", (user_id,))
         conn.commit()
         conn.close()
         return jsonify(ok=True)
@@ -132,9 +128,8 @@ def register(app, get_db, load_report):
         print(f"Chatbot search ({method}) took {time.perf_counter() - started:.1f}s, "
               f"about {len(context) // 4} tokens of data")
 
-        where, value = scope_sql(interview_id)
-        cursor.execute(f"""SELECT role, content FROM chat_messages WHERE user_id = %s AND {where}
-                           ORDER BY message_id DESC LIMIT 4""", [user_id] + ([value] if value else []))
+        cursor.execute("""SELECT role, content FROM chat_messages WHERE user_id = %s
+                          ORDER BY message_id DESC LIMIT 4""", (user_id,))
         history = list(reversed(cursor.fetchall()))
         cursor.execute("INSERT INTO chat_messages (user_id, interview_id, role, content) VALUES (%s, %s, 'user', %s)",
                        (user_id, interview_id, question))
