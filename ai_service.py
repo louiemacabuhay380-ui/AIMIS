@@ -113,6 +113,8 @@ Listen to the audio and return only JSON in exactly this format:
   The candidate is the main voice, closest to the microphone. Leave out anything else you can hear:
   other people talking in the background, TV, music, the interviewer's voice from the speakers.
   Do not guess words you can't hear clearly, and never invent words to fill noise.
+  Write the transcript only in the Latin alphabet (English or Filipino). Never output other writing systems
+  (for example Arabic, Chinese, Korean or Cyrillic letters): unclear sounds are simply left out.
 - filler_word_count: number of filler words, in English or Filipino (um, uh, er, ah, eh,
   "you know", "like" used as filler, ano, parang, kasi, 'yung, ganun, diba used as filler)
 - pause_count: number of noticeable pauses or hesitations of about 2 seconds or more
@@ -347,6 +349,7 @@ def transcribe_answer(question_text, audio_bytes):
             types.Part.from_bytes(data=audio_bytes, mime_type="audio/wav")],
             thinking_level="minimal")
         result["_provider"] = "gemini"
+        result["transcript"] = clean_transcript(result.get("transcript"))
         return result
     except Exception as e:
         if _use_backup("speech-to-text", e, offline_ai.whisper_available()):
@@ -377,11 +380,12 @@ The question you just asked was: "{question}"
 - substance: true if the answer has SUBSTANCE (a real situation, something the candidate actually did, a decision
   with reasons, a result, a lesson, or a specific detail), false if it doesn't (empty, very short, off-topic,
   "I don't know", or only general claims).
-- reply: what you say right after the answer, like a real interviewer in a conversation (at most 25 words, no question
-  mark). It shows you listened by mentioning one specific thing they said (you may use their first name now and then, not in every reply).
+- reply: what you say right after the answer, like a real interviewer in a conversation (at most 25 words). The reply
+  NEVER contains a question: any question you want to ask goes in follow_up (or next_question), never in reply. It shows you listened by mentioning one specific thing they said (you may use their first name now and then, not in every reply).
   If you ask a follow_up, the reply only acknowledges the answer (the follow-up comes right after it).
   If you move on (follow_up is ""), the reply acknowledges the answer and adds a short natural bridge to the next
-  topic, e.g. "Thanks, Ana, that gives me a good picture of your OJT. Let's talk about working under pressure."
+  topic, in this shape: "Thanks, <name>, <one thing they actually said>. Let's talk about <the next topic>."
+  (the angle brackets are placeholders: fill them from THIS conversation, never copy the shape's wording).
   Stay neutral and professional: do not grade the answer, do not give tips (feedback comes after the
   interview), and do not over-praise. If nothing understandable was said, say politely that you didn't catch it.
 - follow_up: ONE short, complete question (at most 25 words) in clear, simple English, or "". No greeting.
@@ -393,8 +397,9 @@ FOLLOW_ALLOWED = """Decide whether to ask ONE follow-up question, the way a real
 Ask a follow-up ONLY if the answer has SUBSTANCE worth exploring: a real situation, something the candidate
 actually did, a decision with reasons, a result, a lesson, or a specific detail from their background. The
 follow-up must build on one specific thing they said and ask for more depth: their own role, why they chose that,
-what happened next, how it ended, or what they learned (e.g. "You mentioned you split the tasks when the server
-went down. How did you decide who would do what?").
+what happened next, how it ended, or what they learned, in this shape: "You mentioned <something THEY actually
+said in this answer>. How did you <ask about their role, reason, result or lesson>?" Fill the placeholders only
+with words from the candidate's own answer; never invent a story they didn't tell.
 If the answer has NO substance (empty, very short, off-topic, "I don't know", or only general claims such as
 "I am a hard worker" with nothing specific), do NOT follow up: follow_up must be "" and the interview moves on
 to the next question. Never ask them to repeat themselves or simply to "give an example".
@@ -409,8 +414,8 @@ QUESTION_RULES = """It must:
     (Beginner = general and friendly; Intermediate = "Tell me about a time..." real situations;
     Advanced = pressure, conflict, failure or hard trade-offs);
   - flow naturally from the conversation, like the next turn of a real talk: whenever possible, build on something
-    the candidate already told you (their background, OJT, school, work or an earlier answer), e.g. "Since you
-    handled walk-in clients during your OJT, tell me about a time a client was upset with you." It must still be a
+    the candidate already told you (their background, OJT, school, work or an earlier answer), in this shape:
+    "Since you <something they told you>, tell me about a time <a new situation for the skill>." It must still be a
     NEW question that moves to a new situation, not a repeat or a follow-up of the same story;
   - test how they communicate and behave, NOT technical knowledge (never ask them to explain a concept,
     write code or calculate); fresh graduates may answer with school, OJT or part-time examples;
@@ -432,6 +437,8 @@ LIVE_AUDIO_PROMPT = """Listen to the candidate's spoken answer and return only J
   The candidate is the main voice, closest to the microphone. Leave out anything else you can hear:
   other people talking in the background, TV, music, the interviewer's voice from the speakers.
   Do not guess words you can't hear clearly, and never invent words to fill noise.
+  Write the transcript only in the Latin alphabet (English or Filipino). Never output other writing systems
+  (for example Arabic, Chinese, Korean or Cyrillic letters): unclear sounds are simply left out.
 - filler_word_count: number of filler words, in English or Filipino (um, uh, er, ah, eh,
   "you know", "like" used as filler, ano, parang, kasi, 'yung, ganun, diba used as filler)
 - pause_count: number of noticeable pauses or hesitations of about 2 seconds or more
@@ -472,6 +479,56 @@ def _clean_line(text, max_words, question=False):
     return text[:600]
 
 
+# Letters from writing systems the candidate doesn't use (English/Filipino interviews): when speech-to-text turns
+# noise into Arabic, Chinese, etc., those words are not something the candidate said.
+FOREIGN_SCRIPT = re.compile(r"[\u0370-\u03FF\u0400-\u052F\u0590-\u08FF\u0900-\u0DFF\u0E00-\u0FFF\u1000-\u10FF"
+                            r"\u1100-\u11FF\u3040-\u30FF\u3400-\u9FFF\uAC00-\uD7AF\uF900-\uFAFF]")
+
+
+def clean_transcript(text):
+    """Remove words written in other alphabets (speech-to-text noise), and the empty quotes they leave behind."""
+    text = str(text or "")
+    if not FOREIGN_SCRIPT.search(text):
+        return text
+    words = [w for w in text.split() if not FOREIGN_SCRIPT.search(w)]
+    text = " ".join(words)
+    text = re.sub(r"(['\"\u2018\u2019\u201c\u201d])\s*\1", "", text)
+    return " ".join(text.split())
+
+
+# "You mentioned ..." must point to something the candidate really said. A small offline model sometimes invents
+# the story (or copies an example), e.g. asking about a server in an automotive interview.
+MENTION = re.compile(r"\byou(?:'ve| have)? (?:mentioned|said|talked about|described|shared|told me|brought up|noted)\b"
+                     r"([^.?!]*)", re.I)
+STOP_WORDS = set("""that this there their they them then than with when what where which while would could should
+about after again also because been before being both does doing done each from have having here into just like more
+most much only other over same some such them very were will your yours yourself said told mentioned talked
+described shared things thing something someone really kind sort""".split())
+
+
+def _content_words(text):
+    return {w[:5] for w in re.findall(r"[a-z][a-z'-]{3,}", str(text or "").lower()) if w not in STOP_WORDS}
+
+
+def _grounded(text, *sources):
+    """False if the text says "you mentioned X" and X shares no real word with what the candidate said."""
+    said = set().union(*(_content_words(src) for src in sources)) if sources else set()
+    for clause in MENTION.findall(str(text or "")):
+        words = _content_words(clause)
+        if words and not (words & said):
+            return False
+    return True
+
+
+def _sentences(text):
+    return [t for t in re.split(r"(?<=[.!?])\s+", " ".join(str(text or "").split())) if t]
+
+
+def _no_foreign(text):
+    """Drop any sentence that quotes words from another alphabet (it would ask about noise)."""
+    return " ".join(t for t in _sentences(text) if not FOREIGN_SCRIPT.search(t))
+
+
 def _live_text_reply(transcript, fields):
     """Reply, follow-up and next question from a transcript (when the speech was transcribed offline by Whisper)."""
     if not transcript or not offline_ai.ollama_available():
@@ -509,15 +566,36 @@ def live_turn(question_text, audio_bytes, career, category, difficulty, allow_fo
                 raise
             result = offline_ai.transcribe_local(audio_bytes)
             result.update(_live_text_reply(result.get("transcript"), fields))
-    result["reply"] = _clean_line(result.get("reply"), 30)
-    follow = _clean_line(result.get("follow_up"), 45, question=True) if allow_follow_up else ""
+    result["transcript"] = clean_transcript(result.get("transcript"))
+    spoken = len(result["transcript"].split())
     substance = result.get("substance")
     if isinstance(substance, str):
         substance = substance.strip().lower() == "true"
-    if follow and (len(follow) < 12 or not (result.get("transcript") or "").strip() or substance is False):
-        follow = ""                               # no follow-up on an empty answer or one without substance
-    result["substance"] = bool(follow) if substance is None else bool(substance)
-    nxt = _clean_line(result.get("next_question"), 60, question=True) if need_next else ""
+
+    # The reply never asks anything. If the AI put its follow-up question inside the reply (and left follow_up
+    # empty), that question becomes the follow-up, so AIMIS waits for the answer instead of jumping to the next
+    # question. When no follow-up is allowed, the question is simply removed from the reply.
+    reply_parts = _sentences(_no_foreign(result.get("reply")))
+    asked = [t for t in reply_parts if t.endswith("?")]
+    result["reply"] = _clean_line(" ".join(t for t in reply_parts if not t.endswith("?")), 30)
+    follow = _no_foreign(result.get("follow_up")) if allow_follow_up else ""
+    if allow_follow_up and not follow.strip() and asked and substance is not False:
+        follow = asked[-1]
+    follow = _clean_line(follow, 45, question=True) if follow else ""
+    if follow and (len(follow) < 12 or spoken < 5):
+        follow = ""                               # no follow-up on an empty or nearly empty answer
+    if follow and not _grounded(follow, result["transcript"]):
+        print("[AIMIS Bot] the follow-up talked about something the candidate never said: not used")
+        follow = ""
+        result["reply"] = ""                      # the reply came from the same made-up story
+    if not _grounded(result["reply"], result["transcript"]):
+        result["reply"] = ""                      # the default "Thank you." is shown instead
+    # A specific follow-up means the AI found something to dig into, even if it said "no substance"
+    result["substance"] = True if follow else bool(substance)
+    nxt = _clean_line(_no_foreign(result.get("next_question")), 60, question=True) if need_next else ""
+    if nxt and not _grounded(nxt, result["transcript"], history):
+        print("[AIMIS Bot] the next question referred to something the candidate never said: not used")
+        nxt = ""
     seen = {" ".join(q.lower().split()) for q in avoid}
     if nxt and (len(nxt) < 15 or " ".join(nxt.lower().split()) in seen):
         nxt = ""                                  # too short or a repeat: the bank question is used instead
