@@ -12,6 +12,14 @@
   {{- items | map(attribute=key) | select("number") | sum -}}
 {%- endmacro %}
 
+{# A result row with a dropdown arrow on the left that opens "how this is calculated" #}
+{% macro calc(label, value) -%}
+  <details class="kv kv-calc">
+    <summary><span class="kv-name"><svg class="kv-arrow" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true"><path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>{{ label }}</span>{{ value }}</summary>
+    <div class="kv-how">{{ caller() }}</div>
+  </details>
+{%- endmacro %}
+
 {# One 0-100 score, colored by level and labeled with a word so it doesn't rely on color alone #}
 {% macro score(items, key) -%}
   {%- set vals = items | map(attribute=key) | select("number") | list -%}
@@ -341,7 +349,13 @@
   {% if v2 %}
     <h2>Answer Effectiveness</h2>
     {% for c in rubric.answer_criteria %}
-      <div class="kv"><span>{{ c.label }}</span>{{ score(scored, c.key ~ "_score") }}</div>
+      {% call calc(c.label, score(scored, c.key ~ "_score")) %}
+        <p>{{ c.question }}</p>
+        <p>The AI rates every answer on 5 levels, and this is the average of your answers ({{ c.weight }}% of Answer Effectiveness):</p>
+        <ol class="calc-levels" reversed>
+          {% for lv in c.levels | reverse %}<li><b>{{ [100, 75, 50, 25, 0][loop.index0] }}</b> {{ lv }}</li>{% endfor %}
+        </ol>
+      {% endcall %}
     {% endfor %}
   {% else %}
     <h2>Answer Analysis</h2>
@@ -369,37 +383,48 @@
   {% macro cls(key) -%}
     {%- set c = chk.get(key) -%}{{ {"met": "score-val lvl-good", "near": "score-val lvl-ok", "far": "score-val lvl-low"}.get(c.close, "") if c }}
   {%- endmacro %}
-  {% macro row(label, items, key, unit, fmt="%.0f", crit=None) -%}
+  {% macro how(crit, extra) -%}
+    {%- set c = chk.get(crit) if crit -%}
+    {%- if extra %}<p>{{ extra }}</p>{% endif -%}
+    {%- if c %}{% if not extra %}<p>{{ c.how }}</p>{% endif %}<p><b>Target ({{ c.key }} {{ c.label }}):</b> {{ c.target }}. {{ "Met" if c.met else "Not met" }} for this interview{% if c.close == "near" %}, but close to the target{% endif %}.</p>{% endif -%}
+    <p class="muted">The number shown is the average of your answers. The checklist checks the whole interview, where longer answers count more.</p>
+  {%- endmacro %}
+  {% macro row(label, items, key, unit, fmt="%.0f", crit=None, extra=None) -%}
     {%- set have = items | selectattr(key, "number") | list -%}
-    {%- if have -%}<div class="kv"><span>{{ label }}</span><span class="{{ cls(crit) if crit }}">{{ avg(have, key, fmt) }}{{ unit }}{{ mark(crit) if crit }}</span></div>{%- endif -%}
+    {%- if have -%}
+      {%- set val %}<span class="{{ cls(crit) if crit }}">{{ avg(have, key, fmt) }}{{ unit }}{{ mark(crit) if crit }}</span>{% endset -%}
+      {% call calc(label, val) %}{{ how(crit, extra) }}{% endcall %}
+    {%- endif -%}
   {%- endmacro %}
   {% if heard or seen %}
   <section class="tile tile-quarter">
     <h2>Speech measurements</h2>
     {% if heard %}
-      {{ row("Speaking pace", heard, "speaking_rate", " words/min", crit="S2") }}
-      <div class="kv"><span>Filler words</span><span class="{{ cls('S5') }}">{{ total(heard, "filler_word_count") }}{{ mark('S5') }}</span></div>
+      {{ row("Speaking pace", heard, "speaking_rate", " words/min", crit="S2", extra="Counted from the transcript: number of words divided by your speaking time in minutes.") }}
+      {% set val %}<span class="{{ cls('S5') }}">{{ total(heard, "filler_word_count") }}{{ mark('S5') }}</span>{% endset %}
+      {% call calc("Filler words", val) %}<p>The total number of filler words in all your answers. The checklist turns it into fillers per minute.</p>{{ how("S5") | replace('<p class="muted">The number shown is the average of your answers. The checklist checks the whole interview, where longer answers count more.</p>', '') }}{% endcall %}
       {% set lp = heard | selectattr("long_pause_count", "number") | list %}
-      {% if lp %}<div class="kv"><span>Long pauses <small class="muted">(2 s or more)</small></span><span class="{{ cls('S6') }}">{{ total(lp, "long_pause_count") }}{{ mark('S6') }}</span></div>{% endif %}
-      {{ row("Tone (pitch variation)", heard, "pitch_variation", " semitones", "%.1f", crit="S1") }}
-      {{ row("Volume", heard, "average_volume", " dBFS", "%.1f", crit="S3") }}
-      {{ row("Speaking time", heard, "speech_ratio", "%") }}
-      {{ row("Jitter (pitch wobble)", heard, "jitter", "%", "%.2f", crit="S7") }}
-      {{ row("Shimmer (loudness wobble)", heard, "shimmer", "%", "%.2f", crit="S7") }}
+      {% if lp %}{% set val %}<span class="{{ cls('S6') }}">{{ total(lp, "long_pause_count") }}{{ mark('S6') }}</span>{% endset %}
+      {% call calc("Long pauses (2 s or more)", val) %}<p>The total number of silences of 2 seconds or more between words, in all your answers. The checklist turns it into pauses per minute.</p>{{ how("S6") | replace('<p class="muted">The number shown is the average of your answers. The checklist checks the whole interview, where longer answers count more.</p>', '') }}{% endcall %}{% endif %}
+      {{ row("Tone (pitch variation)", heard, "pitch_variation", " semitones", "%.1f", crit="S1", extra='Measured from the recording with librosa: how far your voice moves up and down. Too flat sounds monotone; too much sounds overacted.') }}
+      {{ row("Volume", heard, "average_volume", " dBFS", "%.1f", crit="S3", extra="Measured from the recording in decibels below the maximum (dBFS): closer to 0 is louder.") }}
+      {{ row("Speaking time", heard, "speech_ratio", "%", extra="Share of each recording where you were actually speaking, not silent. Shown for information; it is not a checklist criterion.") }}
+      {{ row("Jitter (pitch wobble)", heard, "jitter", "%", "%.2f", crit="S7", extra="Tiny cycle-to-cycle changes in your pitch. A typical steady voice is about 2% or less. Jitter and shimmer together make the voice steadiness score.") }}
+      {{ row("Shimmer (loudness wobble)", heard, "shimmer", "%", "%.2f", crit="S7", extra="Tiny cycle-to-cycle changes in your loudness. A typical steady voice is about 8% or less. Jitter and shimmer together make the voice steadiness score.") }}
     {% else %}<p class="muted">No speech data yet.</p>{% endif %}
   </section>
   <section class="tile tile-quarter">
     <h2>Camera measurements</h2>
     {% if seen %}
-      {{ row("Looking at the camera", seen, "eye_contact_score", "% of time", crit="B1") }}
-      {{ row("Smiling", seen, "smile_ratio", "% of time", crit="B3") }}
-      {{ row("Head nods", seen, "nods_per_min", " per min", "%.1f", crit="B2") }}
-      {{ row("Hand gestures", seen, "gestures_per_min", " per min", "%.1f", crit="B4") }}
-      {{ row("Hands visible", seen, "hands_visible_ratio", "% of time") }}
+      {{ row("Looking at the camera", seen, "eye_contact_score", "% of time", crit="B1", extra="Measured on your device with MediaPipe: your head turned or tilted 25 degrees or less, and your eyes not looking away.") }}
+      {{ row("Smiling", seen, "smile_ratio", "% of time", crit="B3", extra="Share of camera frames where MediaPipe detects a smile.") }}
+      {{ row("Head nods", seen, "nods_per_min", " per min", "%.1f", crit="B2", extra='A nod is a dip of the head of at least 7 degrees that comes back within 1.2 seconds.') }}
+      {{ row("Hand gestures", seen, "gestures_per_min", " per min", "%.1f", crit="B4", extra="Open-hand movements after a still moment, from MediaPipe hand tracking. If your hands are not on camera, this counts as 0.") }}
+      {{ row("Hands visible", seen, "hands_visible_ratio", "% of time", extra="Share of camera frames where at least one hand was visible. Shown for information; it explains a low gesture count.") }}
       {{ row("Sitting upright", seen, "upright_ratio", "% of time", crit="B5") }}
       {{ row("Facing the camera", seen, "facing_ratio", "% of time", crit="B6") }}
-      {{ row("Touches or jerky moves", seen, "fidgets_per_min", " per min", "%.1f", crit="B7") }}
-      {{ row("Face visible", seen, "face_visibility_score", "% of time") }}
+      {{ row("Touches or jerky moves", seen, "fidgets_per_min", " per min", "%.1f", crit="B7", extra="Counted as signs of nervousness; fewer is better.") }}
+      {{ row("Face visible", seen, "face_visibility_score", "% of time", extra="Share of camera frames where your face was found. Shown for information; camera criteria are only as reliable as this.") }}
     {% else %}<p class="muted">No camera data for this interview.</p>{% endif %}
   </section>
   {% endif %}

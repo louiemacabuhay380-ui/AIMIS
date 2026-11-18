@@ -3643,3 +3643,19 @@ body.is-admin .label-line span:last-child { white-space: nowrap; flex-shrink: 0;
 .brand-logo, .brand-logo img { background: transparent !important; }
 .brand-logo { padding: 0; border: 0; border-radius: 11px; box-shadow: 0 3px 10px rgba(47, 138, 212, 0.28); }
 .brand-logo img { object-fit: cover; }
+
+/* Result rows with a dropdown arrow (left) that explains how each value is calculated */
+details.kv-calc { display: block; padding: 0; }
+details.kv-calc > summary { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 0; cursor: pointer; list-style: none; }
+details.kv-calc > summary::-webkit-details-marker { display: none; }
+details.kv-calc > summary:hover .kv-name { color: var(--text); }
+details.kv-calc > summary:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 6px; }
+.kv-calc .kv-name { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); }
+.kv-calc .kv-arrow { flex: none; color: var(--primary); transition: transform .15s ease; }
+details.kv-calc[open] .kv-arrow { transform: rotate(90deg); }
+.kv-how { margin: 0 0 12px 20px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 13.5px; line-height: 1.5; color: var(--text); }
+.kv-how p { margin: 0 0 6px; }
+.kv-how p:last-child { margin-bottom: 0; }
+.kv-how .calc-levels { margin: 4px 0 0; padding-left: 0; list-style: none; }
+.kv-how .calc-levels li { padding: 2px 0; }
+.kv-how .calc-levels b { display: inline-block; min-width: 30px; color: var(--primary); }
