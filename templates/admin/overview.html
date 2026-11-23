@@ -1,11 +1,55 @@
 {% extends "base.html" %}
 {% from "admin/_macros.html" import score %}
-{% block title %}Admin · AIMIS{% endblock %}
+{% block title %}Admin · AIMIS<script>
+  // Two-view switches (activity: month/day, help: weak areas/sub-skills); each remembers its last choice
+  document.querySelectorAll(".bento-admin .tile").forEach(function (tile) {
+    var buttons = tile.querySelectorAll(".seg-switch button");
+    if (!buttons.length) return;
+    var key = "aimis-admin-" + buttons[0].dataset.view;
+    function show(view) {
+      buttons.forEach(function (b) { b.setAttribute("aria-selected", b.dataset.view === view); });
+      tile.querySelectorAll("[data-panel]").forEach(function (p) { p.hidden = p.dataset.panel !== view; });
+      try { localStorage.setItem(key, view); } catch (e) {}
+    }
+    buttons.forEach(function (b) { b.addEventListener("click", function () { show(b.dataset.view); }); });
+    var saved = null;
+    try { saved = localStorage.getItem(key); } catch (e) {}
+    if (saved && tile.querySelector('[data-panel="' + saved + '"]')) show(saved);
+  });
+</script>
+{% endblock %}
 {% block content %}
 <div class="page-head admin-head">
   <div><p class="room-kicker admin-kicker">Admin panel</p><h1>Overview</h1></div>
 </div>
 {% include "admin/_tabs.html" %}
+
+{# ---- Focus banner: what the admin should look at first ---- #}
+<section class="a-hero">
+  <div class="a-hero-main">
+    <p class="a-hero-kicker">Teach next</p>
+    {% if teach %}
+      <h2 class="a-hero-title">{{ teach.label | replace(' below 60%', '') | replace(' below 60', '') }}</h2>
+      <p class="a-hero-text"><b>{{ teach.pct }}%</b> of scored interviews ({{ teach.n }} of {{ teach.of }}) are weak here:
+        {{ teach.label | lower }}. Make it the focus of the next class or coaching session.</p>
+    {% else %}
+      <h2 class="a-hero-title">Waiting for scored interviews</h2>
+      <p class="a-hero-text">The most common weak area appears here once students finish scored interviews.</p>
+    {% endif %}
+  </div>
+  <div class="a-hero-actions">
+    <a class="a-hero-item" href="{{ url_for('admin_users') }}">
+      <span class="a-hero-num">{{ stats.students - stats.active_week }}<small>/{{ stats.students }}</small></span>
+      <span>students didn't practice this week</span></a>
+    <a class="a-hero-item" href="{{ url_for('admin_questions', view='pending') }}">
+      <span class="a-hero-num{{ ' is-alert' if pending }}">{{ pending }}</span>
+      <span>question{{ 's' if pending != 1 }} waiting for review</span></a>
+    <a class="a-hero-item" href="{{ url_for('admin_validation') }}">
+      <span class="a-hero-num">{{ rated }}<small>/{{ rated_goal }}</small></span>
+      <span>answers rated by evaluators (validation)</span>
+      <span class="a-hero-bar"><i style="width: {{ [rated / rated_goal * 100, 100] | min }}%"></i></span></a>
+  </div>
+</section>
 
 {# Bento layout: 4 stats | chart + averages + weak areas | skills + sub-skills + recent #}
 <div class="bento-admin">
@@ -17,47 +61,96 @@
     <span class="stat-note">{{ stats.done_week }} in the last 7 days</span></div>
   <div class="tile a-stat"><span class="stat-label">Average overall score</span>
     <span class="stat-value">{{ "%.0f%%" | format(stats.overall) if stats.overall is number else "–" }}</span>
-    <span class="stat-note">From {{ stats.scored }} scored interview{{ 's' if stats.scored != 1 }}</span></div>
-  <div class="tile a-stat"><span class="stat-label">Questions to review</span><span class="stat-value">{{ pending }}</span>
-    <span class="stat-note"><a href="{{ url_for('admin_questions', view='pending') }}">Open the review list</a></span></div>
+    <span class="stat-note">From {{ stats.scored }} scored interview{{ 's' if stats.scored != 1 }}</span>
+    <span class="a-sub-scores">
+      {% for label, v in [("Answer", stats.quality), ("Speech", stats.speech), ("Behavioral", stats.behavior)] %}
+        <span title="Average {{ label | lower }} score"><b class="{{ 'lvl-txt-good' if v is number and v >= 70 else 'lvl-txt-ok' if v is number and v >= 50 else 'lvl-txt-low' if v is number else '' }}">{{ "%.0f%%" | format(v) if v is number else "–" }}</b> {{ label }}</span>
+      {% endfor %}
+    </span></div>
 
   {# ---- Row 2: activity, averages, weak areas ---- #}
   <section class="tile a-chart">
-    <h2>Interviews completed, last 14 days</h2>
-    <div class="col-chart" role="img" aria-label="Interviews completed per day: {% for d in daily %}{{ d.label }} {{ d.n }}{{ ', ' if not loop.last }}{% endfor %}">
-      {% for d in daily %}
-        <div class="col" title="{{ d.label }}: {{ d.n }} interview{{ 's' if d.n != 1 }}">
-          <span class="col-val">{{ d.n if d.n else '' }}</span>
-          <span class="col-bar" style="height: {{ (d.n / daily_max * 100) | round(1) }}%"></span>
-          <span class="col-label">{{ d.label.split(' ')[1] }}</span>
-        </div>
-      {% endfor %}
-    </div>
-  </section>
-
-  <section class="tile a-avg">
-    <h2>Average scores</h2>
-    <div class="a-avg-grid">
-    {% for label, v in [("Answer effectiveness", stats.quality), ("Speech", stats.speech), ("Behavioral", stats.behavior)] %}
-      <div class="score-row">
-        <div class="label-line"><span>{{ label }}</span><span>{{ "%.0f%%" | format(v) if v is number else "–" }}</span></div>
-        <div class="bar"><span style="width: {{ v if v is number else 0 }}%"></span></div>
+    <div class="a-head"><h2>Student activity <span class="heat-year">
+        {% if has_prev %}<a href="{{ url_for('admin_overview', year=year - 1) }}" aria-label="Show {{ year - 1 }}">‹</a>{% endif %}
+        {{ year }}
+        {% if has_next %}<a href="{{ url_for('admin_overview', year=year + 1) }}" aria-label="Show {{ year + 1 }}">›</a>{% endif %}</span></h2>
+      <span class="muted small">{% if peak %}Busiest month: <b>{{ peak.full }}</b> · {{ peak.students }} student{{ 's' if peak.students != 1 }}, {{ peak.n }} interview{{ 's' if peak.n != 1 }}{% else %}No interviews yet{% endif %}</span></div>
+    <p class="muted small a-peak">Each square is one day, shaded by how many students practiced. Darker months show when students prepare for job fairs and hiring.</p>
+    <div class="heat" role="img" aria-label="Students who practiced each day in {{ year }}{% if peak %}; busiest month {{ peak.full }}{% endif %}">
+      <div class="heat-days" aria-hidden="true"><span></span><span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span></div>
+      <div class="heat-grid">
+        {% for w in weeks %}
+          <div class="heat-week{{ ' is-other-half' if w.half != show_half }}">
+            <span class="heat-month">{{ w.month }}</span>
+            {% for d in w.days %}
+              {% if d and d.blank %}<i class="heat-cell is-blank"></i>
+              {% elif d %}<i class="heat-cell lv{{ d.level }}" title="{{ d.date }}: {{ d.students }} student{{ 's' if d.students != 1 }}, {{ d.interviews }} interview{{ 's' if d.interviews != 1 }}"></i>
+              {% else %}<i class="heat-cell is-future" title="Coming up"></i>{% endif %}
+            {% endfor %}
+          </div>
+        {% endfor %}
       </div>
-    {% endfor %}
+    </div>
+    <div class="heat-legend"><span>Students per day</span><b>0</b>
+      <span class="heat-scale"><i class="heat-cell lv0"></i><i class="heat-cell lv1"></i><i class="heat-cell lv2"></i><i class="heat-cell lv3"></i><i class="heat-cell lv4"></i></span>
+      <b>{{ heat_max }}</b></div>
+    <div class="month-bars" role="img" aria-label="Interviews per month in {{ year }}">
+      {% for m in months %}
+        <div class="mb{{ ' is-peak' if m.peak }}{{ ' is-future' if m.future }}" title="{{ m.full }}: {{ m.n }} interview{{ 's' if m.n != 1 }}, {{ m.students }} student{{ 's' if m.students != 1 }}">
+          <small>{{ m.n if m.n else '' }}</small>
+          <span class="mb-track"><i style="height: {{ m.pct }}%"></i></span>
+          <em>{{ m.label }}</em>
+        </div>
+      {% endfor %}
     </div>
   </section>
 
-  <section class="tile a-weak">
-    <h2>Common weak areas</h2>
-    <p class="muted small">Share of scored interviews below 60. Plan what to teach next.</p>
+
+  <section class="tile a-weak a-needs">
+    <div class="a-head">
+      <h2>Where students need help</h2>
+      <span class="seg-switch" role="tablist" aria-label="Help view">
+        <button type="button" role="tab" aria-selected="true" data-view="weak">Weak areas</button>
+        <button type="button" role="tab" aria-selected="false" data-view="subs">Sub-skills</button>
+      </span>
+    </div>
+
+    <div data-panel="weak">
     {% if weak %}
-      {% for w in weak %}
-        <div class="score-row" title="{{ w.n }} of {{ w.of }} interviews">
-          <div class="label-line"><span>{{ w.label }}</span><span>{{ w.pct }}% <small class="muted">({{ w.n }}/{{ w.of }})</small></span></div>
-          <div class="bar bar-warn"><span style="width: {{ w.pct }}%"></span></div>
-        </div>
-      {% endfor %}
+      <p class="muted small">Share of scored interviews that are weak in each area, worst first.</p>
+      <ol class="a-rank">
+        {% for w in weak | sort(attribute='pct', reverse=true) %}
+          {% set level = 'low' if w.pct >= 50 else 'ok' if w.pct >= 25 else 'good' %}
+          <li class="a-rank-row" title="{{ w.n }} of {{ w.of }} interviews">
+            <span class="a-rank-pos">{{ loop.index }}</span>
+            <div class="a-rank-body">
+              <div class="a-rank-top"><span>{{ w.label }}</span><span><b class="lvl-txt-{{ level }}">{{ w.pct }}%</b> <small class="muted">{{ w.n }}/{{ w.of }}</small></span></div>
+              <span class="a-rank-bar"><i class="sev-{{ level }}" style="width: {{ [w.pct, 2] | max }}%"></i></span>
+            </div>
+          </li>
+        {% endfor %}
+      </ol>
+      <div class="sev-legend"><span><i class="sev-low"></i>50%+ need help</span><span><i class="sev-ok"></i>25–49%</span><span><i class="sev-good"></i>under 25%</span></div>
     {% else %}<p class="muted">Not enough scored interviews yet.</p>{% endif %}
+    </div>
+
+    <div data-panel="subs" hidden>
+      <p class="muted small a-legend-line"><span class="class-legend"><i class="lg lg-weak"></i>Weak <i class="lg lg-okay"></i>Okay <i class="lg lg-strong"></i>Strong</span> · how the AI rated each sub-skill across all students</p>
+    {% if class_skills %}
+      <div class="a-skills">
+        {% for s in class_skills %}
+          <div class="a-skill" title="{{ s.weak }} weak, {{ s.okay }} okay, {{ s.strong }} strong out of {{ s.total }} answers · {{ s.weak_students }} student{{ 's' if s.weak_students != 1 }}">
+            <div class="a-skill-top"><span>{{ s.name }}</span><span><b>{{ s.weak_pct }}%</b> weak</span></div>
+            <span class="stack" role="img" aria-label="{{ s.name }}: {{ s.weak_pct }}% weak, {{ s.okay_pct }}% okay, {{ s.strong_pct }}% strong">
+              <i class="lg-weak" style="width: {{ s.weak_pct }}%"></i><i class="lg-okay" style="width: {{ s.okay_pct }}%"></i><i class="lg-strong" style="width: {{ s.strong_pct }}%"></i>
+            </span>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="muted">Appears after interviews are scored with sub-skill labels.</p>
+    {% endif %}
+    </div>
   </section>
 
   {# ---- Row 3: skills, sub-skills, recent (fixed height, lists scroll inside) ---- #}
@@ -81,26 +174,6 @@
     </div>
   </section>
 
-  <section class="tile a-list">
-    <div class="a-head"><h2>Sub-skills across students</h2>
-      <span class="class-legend muted small"><i class="lg lg-weak"></i>Weak <i class="lg lg-okay"></i>Okay <i class="lg lg-strong"></i>Strong</span></div>
-    <div class="a-scroll">
-    {% if class_skills %}
-      <div class="a-skills">
-        {% for s in class_skills %}
-          <div class="a-skill" title="{{ s.weak }} weak, {{ s.okay }} okay, {{ s.strong }} strong out of {{ s.total }} answers · {{ s.weak_students }} student{{ 's' if s.weak_students != 1 }}">
-            <div class="a-skill-top"><span>{{ s.name }}</span><span><b>{{ s.weak_pct }}%</b> weak</span></div>
-            <span class="stack" role="img" aria-label="{{ s.name }}: {{ s.weak_pct }}% weak, {{ s.okay_pct }}% okay, {{ s.strong_pct }}% strong">
-              <i class="lg-weak" style="width: {{ s.weak_pct }}%"></i><i class="lg-okay" style="width: {{ s.okay_pct }}%"></i><i class="lg-strong" style="width: {{ s.strong_pct }}%"></i>
-            </span>
-          </div>
-        {% endfor %}
-      </div>
-    {% else %}
-      <p class="muted">Appears after interviews are scored with sub-skill labels.</p>
-    {% endif %}
-    </div>
-  </section>
 
   <section class="tile a-list">
     <div class="a-head"><h2>Recently completed</h2><a href="{{ url_for('admin_interviews') }}" class="small">All records</a></div>
@@ -123,4 +196,21 @@
     </div>
   </section>
 </div>
+<script>
+  // Two-view switches (activity: month/day, help: weak areas/sub-skills); each remembers its last choice
+  document.querySelectorAll(".bento-admin .tile").forEach(function (tile) {
+    var buttons = tile.querySelectorAll(".seg-switch button");
+    if (!buttons.length) return;
+    var key = "aimis-admin-" + buttons[0].dataset.view;
+    function show(view) {
+      buttons.forEach(function (b) { b.setAttribute("aria-selected", b.dataset.view === view); });
+      tile.querySelectorAll("[data-panel]").forEach(function (p) { p.hidden = p.dataset.panel !== view; });
+      try { localStorage.setItem(key, view); } catch (e) {}
+    }
+    buttons.forEach(function (b) { b.addEventListener("click", function () { show(b.dataset.view); }); });
+    var saved = null;
+    try { saved = localStorage.getItem(key); } catch (e) {}
+    if (saved && tile.querySelector('[data-panel="' + saved + '"]')) show(saved);
+  });
+</script>
 {% endblock %}

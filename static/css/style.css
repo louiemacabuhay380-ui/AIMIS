@@ -3659,3 +3659,212 @@ details.kv-calc[open] .kv-arrow { transform: rotate(90deg); }
 .kv-how .calc-levels { margin: 4px 0 0; padding-left: 0; list-style: none; }
 .kv-how .calc-levels li { padding: 2px 0; }
 .kv-how .calc-levels b { display: inline-block; min-width: 30px; color: var(--primary); }
+
+/* History card: the band name ("Developing", "Needs improvement") always fits beside the score */
+.h-grid .h-card { container-type: inline-size; }
+.h-card-score .h-big { flex: none; }
+.h-card-score .h-band { flex: 1 1 auto; min-width: 0; }
+.h-grid .h-band .h-band-name { font-size: clamp(15px, 6.4cqi, 21px); line-height: 1.15; overflow-wrap: break-word; }
+.h-grid .h-band small { font-size: clamp(12.5px, 4.3cqi, 15px); }
+@container (max-width: 330px) {
+  .h-grid .h-card .h-big { font-size: 46px; }
+  .h-grid .h-card-score { gap: 10px; }
+}
+
+/* Onboarding and My profile: every question sits in its own soft box, like the consent cards, so the page reads
+   as clear groups instead of loose labels and chips */
+.kyc-fieldset, .kyc-grid, label.kyc-name, #kycOtherBox {
+  padding: 16px 18px; border-radius: 18px; background: var(--surface-2); border: 0; margin: 0 0 12px; box-sizing: border-box; }
+.kyc-fieldset legend { float: left; width: 100%; margin: 0 0 10px; }
+.kyc-fieldset legend + * { clear: both; }
+.kyc-fieldset[hidden], #kycOtherBox[hidden] { display: none; }
+label.kyc-name { max-width: none; }
+.kyc-grid { gap: 14px 18px; }
+.kyc-fieldset input[type=text], .kyc-fieldset input[type=number], .kyc-grid input, label.kyc-name input, #kycOtherBox input {
+  background: var(--surface); }
+.kyc-fieldset .chip span { background: var(--surface); }
+.kyc-exp { gap: 12px 12px; align-items: stretch; }
+.kyc-exp .kyc-fieldset { margin: 0; }
+.kyc-exp + *, .kyc-exp { margin-bottom: 12px; }
+.kyc-fieldset .kyc-other { background: var(--surface); }
+.kyc-careers .pick-card { background: var(--surface-2); border-color: transparent; }
+.kyc-careers .pick:hover .pick-card { border-color: color-mix(in srgb, var(--primary) 40%, transparent); }
+.kyc-careers .pick input:checked + .pick-card { background: var(--primary-soft); border-color: var(--primary); }
+
+/* ---------- Admin overview: focus banner, monthly activity, "where students need help" ---------- */
+:root { --okay-yellow: #eab308; }
+[data-theme="dark"] { --okay-yellow: #facc15; }
+.lg-okay, .stack i.lg-okay, i.lg.lg-okay { background: var(--okay-yellow) !important; }
+
+.a-hero { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 2fr); gap: 18px; align-items: stretch;
+  margin-top: 18px; padding: 22px 24px; border-radius: 24px; background: #c6e1f6; border: 1px solid #9fcaec; }
+[data-theme="dark"] .a-hero { background: #0e3350; border-color: #1b5a86; }
+.a-hero-kicker { margin: 0 0 4px; font-size: 12.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--primary); }
+.a-hero-title { margin: 0 0 6px; font-size: 26px; line-height: 1.15; }
+.a-hero-text { margin: 0; color: var(--text); font-size: 15px; line-height: 1.5; }
+.a-hero-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.a-hero-item { display: flex; flex-direction: column; gap: 4px; padding: 14px 16px; border-radius: 18px; background: var(--surface);
+  color: var(--text); text-decoration: none; font-size: 13.5px; line-height: 1.35; transition: transform .12s, box-shadow .12s; }
+.a-hero-item:hover { transform: translateY(-2px); box-shadow: var(--shadow); text-decoration: none; }
+.a-hero-num { font-size: 26px; font-weight: 800; line-height: 1.1; }
+.a-hero-num small { font-size: 15px; font-weight: 700; color: var(--muted); }
+.a-hero-num.is-alert { color: var(--danger); }
+.a-hero-bar { display: block; height: 6px; margin-top: auto; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.a-hero-bar i { display: block; height: 100%; background: var(--primary); }
+
+.bento-admin .a-chart .a-head, .bento-admin .a-needs .a-head { margin-bottom: 6px; }
+.a-peak { margin: 0 0 8px; }
+.col-chart-12 { grid-template-columns: repeat(12, 1fr); }
+.col.is-peak .col-bar { background: var(--ring-ok); }
+.col.is-peak .col-val { color: var(--text); font-weight: 800; }
+
+.a-rings { max-width: 230px; margin: 4px auto 6px; }
+.a-weak-list { margin: 0 0 8px; }
+.a-weak-list li { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.a-weak-list li:last-child { border-bottom: 0; }
+.a-weak-list .skill-level { white-space: nowrap; }
+.a-needs .ring-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; font-size: 12.5px; color: var(--muted); }
+.a-legend-line .class-legend { margin-right: 4px; }
+
+@media (max-width: 1023px) {
+  .a-hero { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .a-hero { padding: 18px; }
+  .a-hero-title { font-size: 21px; }
+  .a-hero-actions { grid-template-columns: 1fr; }
+  .a-hero-item { flex-direction: row; align-items: center; flex-wrap: wrap; gap: 4px 12px; }
+  .a-hero-bar { flex-basis: 100%; }
+  .col-chart-12 .col-label { font-size: 10.5px; }
+}
+/* Admin grid: 3 stats | activity + averages + lists on the left, "where students need help" down the right */
+@media (min-width: 1024px) {
+  body.is-admin .bento-admin .a-stat { grid-column: span 4; }
+  body.is-admin .bento-admin .a-chart { grid-column: 1 / span 8; grid-row: 2; }
+  body.is-admin .bento-admin .a-avg { grid-column: 1 / span 8; grid-row: 3; }
+  body.is-admin .bento-admin .a-needs { grid-column: 9 / span 4; grid-row: 2 / span 3; }
+  body.is-admin .bento-admin .a-list { grid-column: span 4; grid-row: 4; align-self: start; }
+  body.is-admin .bento-admin .a-list:nth-last-child(2) { grid-column: 1 / span 4; }
+  body.is-admin .bento-admin .a-list:nth-last-child(1) { grid-column: 5 / span 4; }
+  body.is-admin .bento-admin { align-items: start; }
+  body.is-admin .bento-admin .a-needs { align-self: stretch; }
+}
+@media (min-width: 641px) and (max-width: 1023px) {
+  body.is-admin .bento-admin .a-stat { grid-column: span 4; }
+  body.is-admin .bento-admin .a-needs, body.is-admin .bento-admin .a-chart, body.is-admin .bento-admin .a-avg { grid-column: 1 / -1; grid-row: auto; }
+}
+.bento-admin .a-needs .a-head { flex-direction: column; align-items: flex-start; gap: 10px; }
+.a-needs .seg-switch button { white-space: nowrap; }
+@media (max-width: 640px) { body.is-admin .bento-admin .a-stat:nth-of-type(3) { grid-column: 1 / -1 !important; } }
+
+/* Admin: activity heatmap (one square per day, darker = more students) */
+.heat { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; margin-top: 4px; }
+.heat-days { display: grid; grid-template-rows: 16px repeat(7, 1fr); gap: 3px; font-size: 11.5px; color: var(--muted); }
+.heat-days span { display: flex; align-items: center; line-height: 1; }
+.heat-grid { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; }
+.heat-week { display: grid; grid-template-rows: 16px repeat(7, auto); gap: 3px; min-width: 0; }
+.heat-month { font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: visible; line-height: 16px; }
+.heat-cell { display: block; aspect-ratio: 1; width: 100%; border-radius: 3px; background: var(--surface-2); }
+.heat-cell.lv1 { background: #c6e1f6; } .heat-cell.lv2 { background: #7fbbe6; }
+.heat-cell.lv3 { background: #3498db; } .heat-cell.lv4 { background: #1b5a86; }
+[data-theme="dark"] .heat-cell.lv1 { background: #1b4566; } [data-theme="dark"] .heat-cell.lv2 { background: #23679a; }
+[data-theme="dark"] .heat-cell.lv3 { background: #3498db; } [data-theme="dark"] .heat-cell.lv4 { background: #8cc8f0; }
+.heat-cell.is-future { background: transparent; }
+.heat-cell:not(.is-future):hover { outline: 2px solid var(--text); outline-offset: 1px; }
+.heat-legend { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; font-size: 12.5px; color: var(--muted); flex-wrap: wrap; }
+.heat-scale { display: inline-flex; gap: 3px; }
+.heat-scale .heat-cell { width: 13px; }
+.heat-nums { display: inline-flex; gap: 6px; } .heat-nums b { font-weight: 700; }
+@media (max-width: 640px) { .heat-week.is-old { display: none; } }
+
+/* Admin: weak areas as a ranked list with severity bars (worst first) */
+.a-rank { list-style: none; margin: 4px 0 10px; padding: 0; display: grid; gap: 12px; }
+.a-rank-row { display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; }
+.a-rank-pos { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 999px;
+  background: var(--surface-2); font-size: 13px; font-weight: 800; color: var(--muted); }
+.a-rank-row:first-child .a-rank-pos { background: var(--primary); color: #fff; }
+.a-rank-body { display: grid; gap: 4px; min-width: 0; }
+.a-rank-top { display: flex; justify-content: space-between; gap: 10px; font-size: 14.5px; font-weight: 600; }
+.a-rank-top b { font-size: 16px; white-space: nowrap; }
+.a-rank-bar { display: block; height: 10px; border-radius: 999px; background: var(--surface-2); overflow: hidden; }
+.a-rank-bar i { display: block; height: 100%; border-radius: 999px; }
+.sev-low { background: var(--danger); } .sev-ok { background: var(--okay-yellow); } .sev-good { background: var(--good); }
+.lvl-txt-low { color: var(--danger); } .lvl-txt-ok { color: #a16207; } .lvl-txt-good { color: var(--good); }
+[data-theme="dark"] .lvl-txt-ok { color: var(--okay-yellow); }
+.sev-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; color: var(--muted); }
+.sev-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.heat-cell { background: #e3eaf3; }
+[data-theme="dark"] .heat-cell { background: #1e2a38; }
+.heat-cell.is-future { background: transparent; }
+.heat-week { grid-template-columns: minmax(0, 1fr); }
+.heat-month { min-width: 0; width: 0; }
+
+/* Admin overview, less scrolling: averages inside the stat tile, compact lists, heatmap + help side by side */
+.a-sub-scores { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; font-size: 12.5px; color: var(--muted); }
+.a-sub-scores b { font-size: 14px; }
+.a-rank { gap: 9px; }
+.a-rank-row { align-items: center; }
+.a-rank-top { font-size: 14px; }
+.a-rank-top b { font-size: 15px; }
+@media (min-width: 1024px) {
+  body.is-admin .bento-admin .a-chart { grid-column: 1 / span 8; grid-row: 2; }
+  body.is-admin .bento-admin .a-needs { grid-column: 9 / span 4; grid-row: 2 / span 2; }
+  body.is-admin .bento-admin .a-list { grid-row: 3; }
+}
+body.is-admin .bento-admin .data-table.compact td, body.is-admin .bento-admin .data-table.compact th { padding: 8px 0; }
+@media (max-width: 1023px) {
+  /* Tablets and phones: help card and lists side by side where they fit, shorter hero */
+  .a-hero { gap: 12px; padding: 16px 18px; }
+  .a-hero-text { font-size: 14px; }
+  .a-hero-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+  .a-hero-item { padding: 10px 12px; font-size: 12.5px; }
+  .a-hero-num { font-size: 22px; }
+}
+@media (min-width: 641px) and (max-width: 1023px) {
+  body.is-admin .bento-admin .a-list { grid-column: span 6 !important; }
+  body.is-admin .bento-admin .a-stat { grid-column: span 4; }
+}
+@media (max-width: 640px) {
+  .a-hero-actions { grid-template-columns: 1fr; }
+  .a-hero-item { flex-direction: row; align-items: center; padding: 8px 12px; }
+  body.is-admin .bento-admin .a-stat { grid-column: span 6 !important; }
+  body.is-admin .bento-admin .a-stat:nth-of-type(3) { grid-column: 1 / -1 !important; }
+  .a-peak { display: none; }
+}
+body.is-admin .bento-admin .a-stat { align-self: stretch; }
+/* Heatmap: calendar year Jan-Dec; days left in the year are outlined, days outside the year are blank */
+.heat-cell.is-future { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
+.heat-cell.is-blank { background: transparent; box-shadow: none; }
+.heat-year { display: inline-flex; align-items: center; gap: 6px; margin-left: 8px; font-size: 14px; font-weight: 700; color: var(--muted); }
+.heat-year a { display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--text); text-decoration: none; font-size: 15px; line-height: 1; }
+.heat-year a:hover { background: var(--surface-2); text-decoration: none; }
+@media (max-width: 640px) { .heat-week.is-other-half { display: none; } }
+/* Admin layout without dead space: heatmap full width, then help | recent | skills as equal-height cards */
+@media (min-width: 1024px) {
+  body.is-admin .bento-admin .a-chart { grid-column: 1 / -1; grid-row: 2; }
+  body.is-admin .bento-admin .a-needs { grid-column: 1 / span 4; grid-row: 3; align-self: stretch; }
+  body.is-admin .bento-admin .a-list { grid-row: 3; align-self: stretch; }
+  body.is-admin .bento-admin .a-list:nth-last-child(2) { grid-column: 9 / span 4; }
+  body.is-admin .bento-admin .a-list:nth-last-child(1) { grid-column: 5 / span 4; }
+  body.is-admin .bento-admin .heat-cell { border-radius: 4px; }
+}
+/* Admin row 2: heatmap (8 cols) beside "Where students need help" (4 cols), equal height;
+   the month bars grow to fill whatever height is left, so there is no empty space */
+.month-bars { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 8px; margin-top: 16px; min-height: 96px; }
+.mb { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.mb small { font-size: 11px; font-weight: 700; color: var(--muted); line-height: 14px; min-height: 14px; }
+.mb-track { flex: 1; width: 100%; max-width: 28px; display: flex; align-items: flex-end; background: var(--surface-2); border-radius: 6px; overflow: hidden; min-height: 40px; }
+.mb-track i { display: block; width: 100%; background: #7fbbe6; border-radius: 6px 6px 0 0; }
+.mb.is-peak .mb-track i { background: #1b5a86; } .mb.is-peak em, .mb.is-peak small { color: var(--text); font-weight: 700; }
+[data-theme="dark"] .mb-track i { background: #23679a; } [data-theme="dark"] .mb.is-peak .mb-track i { background: #8cc8f0; }
+.mb.is-future .mb-track { background: transparent; box-shadow: inset 0 0 0 1px var(--border); }
+.mb em { font-style: normal; font-size: 11.5px; color: var(--muted); }
+@media (min-width: 1024px) {
+  body.is-admin .bento-admin .a-chart { grid-column: 1 / span 8; grid-row: 2; display: flex; flex-direction: column; align-self: stretch; }
+  body.is-admin .bento-admin .a-chart .month-bars { flex: 1; }
+  body.is-admin .bento-admin .a-needs { grid-column: 9 / span 4; grid-row: 2; align-self: stretch; }
+  body.is-admin .bento-admin .a-list { grid-row: 3; align-self: stretch; }
+  body.is-admin .bento-admin .a-list:nth-last-child(1) { grid-column: 1 / span 6; }
+  body.is-admin .bento-admin .a-list:nth-last-child(2) { grid-column: 7 / span 6; }
+}

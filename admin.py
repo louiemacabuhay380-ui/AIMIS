@@ -123,12 +123,85 @@ def register(app, get_db, load_report, generate_questions):
                  for d in days]
         daily_max = max([d["n"] for d in daily] + [1])
 
+        # Activity heatmap: one square per day for the last 53 weeks, shaded by how many students practiced that
+        # day (like a contribution calendar). Busy weeks and months show when students prepare for job hunting.
+        cursor.execute("""SELECT started_at, user_id FROM interviews WHERE started_at IS NOT NULL""")
+        day_users, day_count = {}, {}
+        for r in cursor.fetchall():
+            if not r["started_at"]:
+                continue
+            key = str(r["started_at"])[:10]
+            day_users.setdefault(key, set()).add(r["user_id"])
+            day_count[key] = day_count.get(key, 0) + 1
+        today = date.today()
+        # Calendar year, January to December (future days stay empty). ?year=2025 shows an earlier year.
+        try:
+            year = int(request.args.get("year") or date.today().year)
+        except ValueError:
+            year = date.today().year
+        year = max(2020, min(year, today.year))
+        jan1, dec31 = date(year, 1, 1), date(year, 12, 31)
+        start = jan1 - timedelta(days=(jan1.weekday() + 1) % 7)          # Sunday of the week with Jan 1
+        n_weeks = (dec31 - start).days // 7 + 1
+        weeks = []
+        for wk in range(n_weeks):
+            days = []
+            for dd in range(7):
+                d = start + timedelta(days=wk * 7 + dd)
+                key = d.isoformat()
+                inside = d.year == year and d <= today
+                days.append({"date": d.strftime("%b %d, %Y"), "students": len(day_users.get(key, ())),
+                             "interviews": day_count.get(key, 0)} if inside else
+                            ({"blank": True} if d.year != year else None))
+            firsts = [start + timedelta(days=wk * 7 + dd) for dd in range(7)]
+            month = next((d.strftime("%b") for d in firsts if d.day == 1 and d.year == year), "")
+            # On phones only the half of the year with the selected date shows (Jan-Jun or Jul-Dec)
+            mid = start + timedelta(days=wk * 7 + 3)
+            half = 1 if mid.year < year else 2 if mid.year > year else (1 if mid.month <= 6 else 2)
+            weeks.append({"days": days, "month": month, "half": half})
+        show_half = (1 if today.month <= 6 else 2) if year == today.year else 2
+        heat_max = max([dd["students"] for w in weeks for dd in w["days"] if dd and "students" in dd] + [1])
+        for w in weeks:
+            for dd in w["days"]:
+                if dd and "students" in dd:
+                    dd["level"] = 0 if not dd["students"] else min(4, -(-dd["students"] * 4 // heat_max))
+
+        # Busiest month in the last 12 months (by students who practiced, then interviews)
+        month_users, month_count = {}, {}
+        for key, users in day_users.items():
+            month_users.setdefault(key[:7], set()).update(users)
+            month_count[key[:7]] = month_count.get(key[:7], 0) + day_count[key]
+        recent_months = [k for k in month_users if k.startswith(f"{year:04d}-")]
+        peak = None
+        if recent_months:
+            k = max(recent_months, key=lambda m: (len(month_users[m]), month_count[m]))
+            peak = {"full": date(int(k[:4]), int(k[5:]), 1).strftime("%B %Y"),
+                    "students": len(month_users[k]), "n": month_count[k], "key": k}
+        # Interviews per month of the shown year, for the bar strip under the heatmap
+        months = []
+        for m in range(1, 13):
+            k = f"{year:04d}-{m:02d}"
+            months.append({"label": date(year, m, 1).strftime("%b"), "full": date(year, m, 1).strftime("%B"),
+                           "n": month_count.get(k, 0), "students": len(month_users.get(k, ())),
+                           "future": date(year, m, 1) > today, "peak": bool(peak) and k == peak["key"]})
+        top = max([x["n"] for x in months] + [0])
+        for x in months:
+            x["pct"] = round(x["n"] * 100 / top) if top else 0
+
         # Categories: how often practiced and the average score
         cursor.execute("""SELECT i.category, COUNT(*) AS n, AVG(e.overall_score) AS avg_score
                           FROM interviews i LEFT JOIN evaluations e ON e.interview_id = i.interview_id
                           WHERE i.status = 'completed'
                           GROUP BY i.category ORDER BY n DESC""")
-        cats = cursor.fetchall()
+        cats = [dict(c) for c in cursor.fetchall()]
+        # List every skill, including ones nobody practiced yet (0), so the admin sees gaps too
+        try:
+            cursor.execute("SELECT DISTINCT category FROM question_bank WHERE is_active = 1 AND category IS NOT NULL AND category <> ''")
+            seen = {c["category"] for c in cats}
+            cats += [{"category": r["category"], "n": 0, "avg_score": None}
+                     for r in cursor.fetchall() if r["category"] not in seen]
+        except Exception:
+            pass
         cat_max = max([c["n"] for c in cats] + [1])
 
         # Common weak areas: share of scored interviews where each part was below 60
@@ -166,7 +239,7 @@ def register(app, get_db, load_report, generate_questions):
                           FROM interviews i JOIN users u ON u.user_id = i.user_id
                           LEFT JOIN evaluations e ON e.interview_id = i.interview_id
                           WHERE i.status = 'completed'
-                          ORDER BY i.completed_at DESC LIMIT 8""")
+                          ORDER BY i.completed_at DESC LIMIT 5""")
         recent = cursor.fetchall()
         pending = 0
         try:
@@ -175,7 +248,15 @@ def register(app, get_db, load_report, generate_questions):
         except Exception:
             pass   # the review column isn't added yet (schema block 6)
         class_skills = personal_feedback.class_subskills(cursor)   # sub-skills across all students
+        rated = 0
+        try:
+            cursor.execute("SELECT COUNT(DISTINCT response_id) AS n FROM human_ratings")
+            rated = int(cursor.fetchone()["n"] or 0)
+        except Exception:
+            pass
         conn.close()
+        # Banner: the one thing to teach next = the most common weak area
+        teach = max(weak, key=lambda x: x["pct"]) if weak and any(x["n"] for x in weak) else None
         return render_template("admin/overview.html", active="overview", class_skills=class_skills,
                                stats={"students": students, "active_week": active_week,
                                       "done": int(done["total"] or 0), "done_week": int(done["week"] or 0),
@@ -183,7 +264,9 @@ def register(app, get_db, load_report, generate_questions):
                                       "speech": num(avg["speech"]), "behavior": num(avg["behavior"]),
                                       "scored": int(avg["scored"] or 0)},
                                daily=daily, daily_max=daily_max, cats=cats, cat_max=cat_max,
-                               weak=weak, recent=recent, pending=pending)
+                               weak=weak, recent=recent, pending=pending, weeks=weeks,
+                               heat_max=heat_max, peak=peak, months=months, year=year, show_half=show_half,
+                               has_prev=any(k < f"{year:04d}" for k in day_users), has_next=year < today.year, rated=rated, rated_goal=30, teach=teach)
 
     # ------------------------------------------------------------------ users
     @admin_required

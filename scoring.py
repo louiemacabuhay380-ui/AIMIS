@@ -268,9 +268,16 @@ def band_ranges():
     return out
 
 
+def shown(score):
+    """The score as the student sees it (rounded to a whole number, like the "%.0f" on every page), so the band,
+    color and profile always match the number shown: 69.55 is shown as 70 and counts as Proficient."""
+    return None if score is None else round(float(score))
+
+
 def band(score):
     if score is None:
         return None
+    score = shown(score)
     for low, label in BANDS:
         if score >= low:
             return label
@@ -281,6 +288,7 @@ def level_class(score):
     """CSS level used by the report: good / ok / low."""
     if score is None:
         return "none"
+    score = shown(score)
     return "good" if score >= PASS_MARK else "ok" if score >= 50 else "low"
 
 
@@ -374,6 +382,7 @@ PROFILES = {
 def profile(answer, delivery):
     if answer is None:
         return None
+    answer, delivery = shown(answer), shown(delivery)
     if delivery is None:
         return "ready" if answer >= PASS_MARK else "practice"
     good_answer, good_delivery = answer >= PASS_MARK, delivery >= PASS_MARK

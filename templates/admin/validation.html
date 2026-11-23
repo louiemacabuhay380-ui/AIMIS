@@ -40,7 +40,7 @@
   <p class="muted small">Evaluators score anonymous answers on the same five criteria as the AI (relevance, directness, structure, specific evidence, grammar) with a 1–5 rubric, without seeing
     the AI's scores. Their ratings are converted to 0–100 (1 = 0, 2 = 25, 3 = 50, 4 = 75, 5 = 100) and averaged when
     several evaluators rated the same answer.</p>
-  <table class="data-table">
+  <div class="table-scroll"><table class="data-table">
     <thead><tr><th>Criterion</th><th class="num">Answers</th><th class="num">Pearson r</th><th>Strength</th>
       <th class="num">Avg. difference</th><th class="num">Within 25 pts</th><th class="num">AI average</th><th class="num">Human average</th></tr></thead>
     <tbody>
@@ -52,7 +52,7 @@
         </tr>
       {% endfor %}
     </tbody>
-  </table>
+  </table></div>
   {% if overall.n < 30 %}
     <p class="muted small">At least 30 rated answers are recommended before reporting these results; correlations from
       fewer answers change a lot with each new rating.</p>
@@ -73,13 +73,13 @@
   <div class="card">
     <h2>Agreement between evaluators</h2>
     {% if inter %}
-      <table class="data-table">
+      <div class="table-scroll"><table class="data-table">
         <thead><tr><th>Criterion</th><th class="num">Pairs</th><th class="num">Same score</th><th class="num">Within 1 level</th><th class="num">r</th></tr></thead>
         <tbody>{% for i in inter %}
           <tr><td>{{ i.label }}</td><td class="num">{{ i.pairs }}</td><td class="num">{{ pct(i.exact) }}</td>
             <td class="num">{{ pct(i.adjacent) }}</td><td class="num">{{ num(i.r, "%.2f") }}</td></tr>
         {% endfor %}</tbody>
-      </table>
+      </table></div>
       <p class="muted small">If the evaluators often disagree with each other, the rubric needs clearer wording before
         their scores can judge the AI.</p>
     {% else %}
@@ -91,7 +91,7 @@
   <div class="card">
     <h2>Evaluators</h2>
     {% if raters %}
-      <table class="data-table">
+      <div class="table-scroll"><table class="data-table">
         <thead><tr><th>Name</th><th>Email</th><th class="num">Rated</th><th></th></tr></thead>
         <tbody>{% for r in raters %}
           <tr><td>{{ r.full_name }}</td><td>{{ r.email }}</td><td class="num">{{ r.rated }}</td>
@@ -99,7 +99,7 @@
               <input type="hidden" name="email" value="{{ r.email }}"><input type="hidden" name="action" value="remove">
               <button type="submit" class="btn btn-outline btn-sm">Remove</button></form></td></tr>
         {% endfor %}</tbody>
-      </table>
+      </table></div>
     {% else %}
       <p class="muted">No evaluators yet.</p>
     {% endif %}
