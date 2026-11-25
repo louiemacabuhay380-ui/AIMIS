@@ -54,6 +54,9 @@ python app.py
 
 Open http://127.0.0.1:5000. To make another account an admin: `python db.py make-admin your@email.com`
 
+**One PC as the server** (students use AIMIS from their own phones and laptops): double-click
+`start_server.bat` (or `python serve.py`) instead of `python app.py`. Full steps, HTTPS and backups: [DEPLOY.md](DEPLOY.md).
+
 Database commands:
 - `python db.py info` — where the database is and how many rows each table has
 - `python db.py reset` — back up `aimis.db` and start again with an empty one (questions + admin only)

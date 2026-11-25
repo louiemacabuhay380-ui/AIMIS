@@ -6,6 +6,7 @@ itsdangerous
 numpy
 librosa
 nltk
+waitress            # web server for running AIMIS on one PC for many users (python serve.py)
 # Optional: offline speech-to-text backup when Gemini fails
 # faster-whisper
 

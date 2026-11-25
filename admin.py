@@ -437,11 +437,14 @@ def register(app, get_db, load_report, generate_questions):
         def fmt(v):
             if v is None:
                 return ""
-            return round(float(v), 2) if not isinstance(v, (str, int)) else v
+            if isinstance(v, str):
+                # CSV injection: Excel must not run a name or career goal that starts with = + - @ as a formula
+                return "'" + v if v[:1] in ("=", "+", "-", "@", "\t", "\r") else v
+            return round(float(v), 2) if not isinstance(v, int) else v
         for r in rows:
             d = details.get(r["interview_id"], {})
-            writer.writerow([r["interview_id"], r["user_id"]] + ([r["full_name"]] if include_names else []) + [
-                r["career_goal"] or "", r["category"], r["difficulty"], r["number_of_questions"], r["status"],
+            writer.writerow([r["interview_id"], r["user_id"]] + ([fmt(r["full_name"])] if include_names else []) + [
+                fmt(r["career_goal"]), r["category"], r["difficulty"], r["number_of_questions"], r["status"],
                 r["started_at"] or "", r["completed_at"] or "", r["rubric_version"] or ("v1" if r["overall_score"] is not None else ""),
                 fmt(r["overall_score"]), fmt(r["response_quality_score"]), fmt(r["delivery_score"]),
                 fmt(r["speech_performance_score"]), fmt(r["behavioral_score"]), r["performance_profile"] or ""] +

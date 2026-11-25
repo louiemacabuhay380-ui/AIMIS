@@ -9,6 +9,7 @@
     <h1>Interview history</h1>
     <p>Open an interview to see your answers, scores and feedback.</p>
   </div>
+  {% if counts.all %}<a class="btn btn-outline" href="{{ url_for('download_my_csv') }}" download title="One row per answer: question, your answer, scores and feedback">Download CSV</a>{% endif %}
 </div>
 
 <nav class="filter-tabs" aria-label="Show">

@@ -1,11 +1,13 @@
 """My data: students can see what AIMIS keeps about them and delete it.
 Also deletes old voice recordings automatically (RECORDING_RETENTION_DAYS in .env, default 30)."""
+import csv
+import io
 import os
 import threading
 import time
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
-from flask import render_template, request, redirect, url_for, flash, session
+from flask import render_template, request, redirect, url_for, flash, session, Response
 from werkzeug.security import check_password_hash
 
 CLEANUP_EVERY_SECONDS = 6 * 60 * 60   # check for old recordings at most every 6 hours
@@ -128,6 +130,72 @@ def cleanup_old_recordings(get_db, root_path, days=None):
     return removed
 
 
+def csv_safe(v):
+    """A cell Excel won't run as a formula (CSV injection): text that starts with = + - @ gets a leading '."""
+    if v is None:
+        return ""
+    if isinstance(v, float):
+        return round(v, 2)
+    if isinstance(v, str) and v[:1] in ("=", "+", "-", "@", "\t", "\r"):
+        return "'" + v
+    return v
+
+
+MY_CSV_COLUMNS = [
+    # (header, column from the query below)
+    ("interview_id", "interview_id"), ("date", "started_at"), ("skill", "category"), ("difficulty", "difficulty"),
+    ("career_goal", "career_goal"), ("status", "status"), ("rubric", "rubric_version"),
+    ("interview_overall", "overall_score"), ("interview_answer_effectiveness", "response_quality_score"),
+    ("interview_delivery", "delivery_score"), ("interview_speech", "speech_performance_score"),
+    ("interview_behavioral", "behavioral_score"), ("performance_profile", "performance_profile"),
+    ("answer_no", "question_order"), ("follow_up", "follow_up"), ("question", "question_text"),
+    ("your_answer", "transcript"), ("answer_seconds", "duration"),
+    ("relevance", "relevance_score"), ("directness", "directness_score"), ("structure_star", "completeness_score"),
+    ("specific_evidence", "specificity_score"), ("grammar", "grammar_score"),
+    ("words_per_minute", "speaking_rate"), ("filler_words", "filler_word_count"), ("long_pauses", "long_pause_count"),
+    ("pitch_variation", "pitch_variation"), ("fluency", "fluency_score"), ("speech_clarity", "speech_clarity"),
+    ("vocal_confidence", "confidence_score"),
+    ("eye_contact", "eye_contact_score"), ("smile_ratio", "smile_ratio"), ("nods_per_min", "nods_per_min"),
+    ("gestures_per_min", "gestures_per_min"), ("upright_posture_ratio", "upright_ratio"),
+    ("facing_camera_ratio", "facing_ratio"), ("fidgets_per_min", "fidgets_per_min"), ("face_touch_ratio", "face_touch_ratio"),
+    ("feedback", "feedback"), ("better_answer", "better_answer"),
+]
+
+
+def my_interviews_csv_text(cursor, user_id):
+    """One row per answer for one student: their own interviews only (cancelled ones left out)."""
+    cursor.execute("""SELECT i.interview_id, i.started_at, i.category, i.difficulty, i.career_goal, i.status,
+                             e.rubric_version, e.overall_score, e.response_quality_score, e.delivery_score,
+                             e.speech_performance_score, e.behavioral_score, e.performance_profile,
+                             iq.question_order, iq.parent_iq_id, qb.question_text, r.transcript, r.duration,
+                             n.relevance_score, n.directness_score, n.completeness_score, n.specificity_score, n.grammar_score,
+                             s.speaking_rate, s.filler_word_count, s.long_pause_count, s.pitch_variation, s.fluency_score,
+                             s.clarity_score AS speech_clarity, s.confidence_score,
+                             b.eye_contact_score, b.smile_ratio, b.nods_per_min, b.gestures_per_min, b.upright_ratio,
+                             b.facing_ratio, b.fidgets_per_min, b.face_touch_ratio,
+                             af.feedback, af.better_answer
+                      FROM interviews i
+                      LEFT JOIN evaluations e ON e.interview_id = i.interview_id
+                      LEFT JOIN interview_questions iq ON iq.interview_id = i.interview_id
+                      LEFT JOIN question_bank qb ON qb.question_id = iq.question_id
+                      LEFT JOIN responses r ON r.interview_question_id = iq.interview_question_id
+                      LEFT JOIN nlp_analysis n ON n.response_id = r.response_id
+                      LEFT JOIN speech_analysis s ON s.response_id = r.response_id
+                      LEFT JOIN behavior_analysis b ON b.response_id = r.response_id
+                      LEFT JOIN answer_feedback af ON af.response_id = r.response_id
+                      WHERE i.user_id = %s AND i.status <> 'cancelled'
+                      ORDER BY i.started_at DESC, iq.question_order""", (user_id,))
+    rows = cursor.fetchall()
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow([h for h, _ in MY_CSV_COLUMNS])
+    for row in rows:
+        row = dict(row)
+        row["follow_up"] = "" if row.get("question_order") is None else ("yes" if row.get("parent_iq_id") else "no")
+        writer.writerow([csv_safe(row.get(col)) for _, col in MY_CSV_COLUMNS])
+    return out.getvalue()
+
+
 def register(app, get_db):
     last_cleanup = {"at": 0.0}
     lock = threading.Lock()
@@ -237,6 +305,22 @@ def register(app, get_db):
         flash("Your account and all your data have been permanently deleted.")
         return redirect(url_for("login"))
 
+    def download_my_csv():
+        """Data portability: a student downloads their own interviews (scores, answers, feedback) as a CSV."""
+        if "user_id" not in session:
+            flash("Please log in first.")
+            return redirect(url_for("login"))
+        conn = get_db()
+        cursor = conn.cursor(dictionary=True)
+        text = my_interviews_csv_text(cursor, session["user_id"])
+        conn.close()
+        filename = f"aimis_my_interviews_{date.today().isoformat()}.csv"
+        # utf-8-sig so Excel shows ñ and accents correctly
+        return Response(text.encode("utf-8-sig"), mimetype="text/csv",
+                        headers={"Content-Disposition": f"attachment; filename={filename}",
+                                 "Cache-Control": "no-store"})
+
     app.add_url_rule("/my-data", "my_data", my_data)
+    app.add_url_rule("/my-data/interviews.csv", "download_my_csv", download_my_csv)
     app.add_url_rule("/my-data/delete-interviews", "delete_my_interviews", delete_interviews, methods=["POST"])
     app.add_url_rule("/my-data/delete-account", "delete_my_account", delete_account, methods=["POST"])

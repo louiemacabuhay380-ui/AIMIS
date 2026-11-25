@@ -3868,3 +3868,21 @@ body.is-admin .bento-admin .a-stat { align-self: stretch; }
   body.is-admin .bento-admin .a-list:nth-last-child(1) { grid-column: 1 / span 6; }
   body.is-admin .bento-admin .a-list:nth-last-child(2) { grid-column: 7 / span 6; }
 }
+/* My data: download tile across the full width, text and button side by side */
+.bento-mydata .tile-mydata-download { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 24px; align-items: center; }
+.bento-mydata .tile-mydata-download h2 { grid-column: 1 / -1; }
+.bento-mydata .tile-mydata-download p { margin: 0; }
+@media (max-width: 640px) { .bento-mydata .tile-mydata-download { grid-template-columns: 1fr; row-gap: 12px; } .bento-mydata .tile-mydata-download .btn { width: 100%; } }
+@media (max-width: 640px) { .page-head-row > .btn { margin-right: auto; } }
+
+/* Onboarding, consent and My profile boxes: the same light blue as AIMIS Bot's panel, with a soft blue border */
+:root { --box-blue: var(--primary-soft); --box-blue-border: color-mix(in srgb, var(--primary) 22%, transparent); }
+.kyc-fieldset, .kyc-grid, label.kyc-name, #kycOtherBox, .consent-item, .kyc-careers .pick-card {
+  background: var(--box-blue); border: 1px solid var(--box-blue-border); }
+.kyc-careers .pick:hover .pick-card { border-color: color-mix(in srgb, var(--primary) 55%, transparent); }
+/* a picked answer has to stand out from the blue box */
+.kyc-fieldset .chip input:checked + span { background: var(--primary); border-color: var(--primary); color: #fff; }
+[data-theme="dark"] .kyc-fieldset .chip input:checked + span { color: #fff; }
+.kyc-careers .pick input:checked + .pick-card { background: var(--surface); border: 2px solid var(--primary); }
+.consent-step .consent-check { border: 1px solid var(--box-blue-border); background: var(--surface); }
+.consent-step .consent-check:has(input:checked) { border: 2px solid var(--primary); background: var(--box-blue); }

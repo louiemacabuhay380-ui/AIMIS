@@ -33,6 +33,13 @@
     </ul>
   </section>
 
+  <section class="tile tile-mydata-download">
+    <h2>Download my data</h2>
+    <p class="muted">A CSV file (opens in Excel or Google Sheets) with one row per answer: the question, what you said,
+      every score and the feedback. Use it to track your progress or keep a copy before deleting.</p>
+    <a class="btn" href="{{ url_for('download_my_csv') }}" download>Download CSV</a>
+  </section>
+
   <section class="tile tile-danger">
     <h2>Delete my interviews</h2>
     <p class="muted">Deletes all your interviews, recordings, transcripts, scores, feedback and chatbot history.
